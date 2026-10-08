@@ -1,6 +1,12 @@
 import { fsrs, Rating, type Grade } from "ts-fsrs";
 
-export const scheduler = fsrs({ enable_fuzz: false });
+export const scheduler = fsrs({
+  request_retention: 0.9,
+  enable_fuzz: false,
+  enable_short_term: true,
+  learning_steps: ["1m", "10m"],
+  relearning_steps: ["10m"],
+});
 
 export const ratings: {
   value: Grade;
