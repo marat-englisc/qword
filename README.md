@@ -18,6 +18,25 @@ npm start
 SQLite на web использует экспериментальную поддержку Expo; заголовки настроены
 в плагине Expo Router в `app.json`. Для разработки на телефоне используйте обычный `npm start`.
 
+## Зависимости
+
+Для повторяемой установки используйте `npm ci`. Новые пакеты устанавливайте через
+`npx expo install <пакет>`; совместимость с Expo SDK 57 проверяется командой
+`npx expo install --check`, исправляется — `npx expo install --fix`.
+
+NativeWind 4.2.7 требует Tailwind CSS 3; проект использует ветку `~3.4.19`.
+В `package.json` закреплены исправленные вложенные зависимости:
+`postcss-selector-parser@7.1.6` для Tailwind и `uuid@11.1.1` для Xcode.
+Скрипты установки esbuild и unrs-resolver разрешены только для проверенных версий
+через `allowScripts`. После обновления этих пакетов проверьте
+`npm install-scripts ls` и разрешайте скрипты нужных версий отдельно.
+
+`npm audit fix --force` может откатить Expo и установить несовместимые версии
+React Native или Tailwind. Оставшиеся предупреждения нужно разбирать отдельно:
+для braces и node-forge пока нет исправленных релизов, а исправленный
+decode-uri-component 0.5 использует ESM и несовместим с CommonJS-вызовом
+в query-string 7, который используется Expo Router 57.
+
 ## Где добавлять контент
 
 Весь контент находится в `src/content/decks.ts`. Добавьте колоду в `builtInDecks`,
