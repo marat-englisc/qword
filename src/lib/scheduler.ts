@@ -1,6 +1,5 @@
 import { fsrs, Rating, type Grade } from "ts-fsrs";
 
-// Без случайной поправки: подсказка на кнопке совпадает с сохранённым интервалом.
 export const scheduler = fsrs({ enable_fuzz: false });
 
 export const ratings: {
