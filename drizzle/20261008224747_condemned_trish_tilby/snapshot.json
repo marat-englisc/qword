@@ -1,7 +1,7 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "4d547d91-0480-4209-a907-4c9e7a5c8fa4",
+  "id": "9a6bd5e1-c214-4c83-972a-b5dfd37e9022",
   "prevIds": [
     "00000000-0000-0000-0000-000000000000"
   ],
@@ -942,7 +942,7 @@
       "isUnique": false,
       "where": null,
       "origin": "manual",
-      "name": "card_meaning_attributes_attribute_idx",
+      "name": "card_meaning_attributes_attribute_index",
       "entityType": "indexes",
       "table": "card_meaning_attribute"
     },
@@ -956,7 +956,7 @@
       "isUnique": false,
       "where": null,
       "origin": "manual",
-      "name": "user_card_meanings_due_idx",
+      "name": "user_card_meanings_due_index",
       "entityType": "indexes",
       "table": "user_card_meaning"
     },
@@ -970,7 +970,7 @@
       "isUnique": false,
       "where": null,
       "origin": "manual",
-      "name": "user_card_meanings_card_meaning_idx",
+      "name": "user_card_meanings_card_meaning_index",
       "entityType": "indexes",
       "table": "user_card_meaning"
     },
@@ -984,7 +984,7 @@
       "isUnique": false,
       "where": null,
       "origin": "manual",
-      "name": "user_card_meaning_reviews_user_idx",
+      "name": "user_card_meaning_reviews_user_index",
       "entityType": "indexes",
       "table": "user_card_meaning_review"
     },
@@ -1002,7 +1002,7 @@
       "isUnique": false,
       "where": null,
       "origin": "manual",
-      "name": "user_card_meaning_reviews_user_state_idx",
+      "name": "user_card_meaning_reviews_user_state_index",
       "entityType": "indexes",
       "table": "user_card_meaning_review"
     },
@@ -1020,7 +1020,7 @@
       "isUnique": false,
       "where": null,
       "origin": "manual",
-      "name": "user_card_meaning_reviews_progress_idx",
+      "name": "user_card_meaning_reviews_progress_index",
       "entityType": "indexes",
       "table": "user_card_meaning_review"
     },
@@ -1034,7 +1034,7 @@
       "isUnique": false,
       "where": null,
       "origin": "manual",
-      "name": "user_decks_deck_idx",
+      "name": "user_decks_deck_index",
       "entityType": "indexes",
       "table": "user_deck"
     },

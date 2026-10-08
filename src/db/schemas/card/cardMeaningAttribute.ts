@@ -42,6 +42,6 @@ export const cardMeaningAttributeTable = sqliteTable(
       table.attributeId,
       table.value,
     ),
-    index("card_meaning_attributes_attribute_idx").on(table.attributeId),
+    index("card_meaning_attributes_attribute_index").on(table.attributeId),
   ],
 );

@@ -6,7 +6,7 @@
     "@expo/vector-icons": "^15.1.1",
     "@libsql/client": "^0.18.0",
     "dotenv": "^18.0.6",
-    "drizzle-orm": "^0.45.4",
+    "drizzle-orm": "^1.0.0-rc.4",
     "expo": "^57.0.27",
     "expo-constants": "^57.0.21",
     "expo-font": "^57.0.4",

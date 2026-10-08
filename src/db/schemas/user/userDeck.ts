@@ -19,5 +19,5 @@ export const userDeckTable = sqliteTable(
 
     lastReviewedAt: integer("last_reviewed_at", { mode: "timestamp_ms" }),
   },
-  (table) => [index("user_decks_deck_idx").on(table.deckId)],
+  (table) => [index("user_decks_deck_index").on(table.deckId)],
 );

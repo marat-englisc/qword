@@ -41,12 +41,12 @@ export const userCardMeaningReviewTable = sqliteTable(
     review: integer("review", { mode: "timestamp_ms" }).notNull(),
   },
   (table) => [
-    index("user_card_meaning_reviews_user_idx").on(table.review),
-    index("user_card_meaning_reviews_user_state_idx").on(
+    index("user_card_meaning_reviews_user_index").on(table.review),
+    index("user_card_meaning_reviews_user_state_index").on(
       table.state,
       table.review,
     ),
-    index("user_card_meaning_reviews_progress_idx").on(
+    index("user_card_meaning_reviews_progress_index").on(
       table.userCardMeaningId,
       table.review,
     ),

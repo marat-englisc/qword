@@ -100,10 +100,10 @@ CREATE INDEX `cards_deck_id_index` ON `card` (`deck_id`);--> statement-breakpoin
 CREATE INDEX `card_examples_card_meaning_id_index` ON `card_example` (`card_meaning_id`);--> statement-breakpoint
 CREATE INDEX `card_meanings_card_id_index` ON `card_meaning` (`card_id`);--> statement-breakpoint
 CREATE UNIQUE INDEX `card_meaning_attribute_unique` ON `card_meaning_attribute` (`card_meaning_id`,`attribute_id`,`value`);--> statement-breakpoint
-CREATE INDEX `card_meaning_attributes_attribute_idx` ON `card_meaning_attribute` (`attribute_id`);--> statement-breakpoint
-CREATE INDEX `user_card_meanings_due_idx` ON `user_card_meaning` (`due`);--> statement-breakpoint
-CREATE INDEX `user_card_meanings_card_meaning_idx` ON `user_card_meaning` (`card_meaning_id`);--> statement-breakpoint
-CREATE INDEX `user_card_meaning_reviews_user_idx` ON `user_card_meaning_review` (`review`);--> statement-breakpoint
-CREATE INDEX `user_card_meaning_reviews_user_state_idx` ON `user_card_meaning_review` (`state`,`review`);--> statement-breakpoint
-CREATE INDEX `user_card_meaning_reviews_progress_idx` ON `user_card_meaning_review` (`user_card_meaning_id`,`review`);--> statement-breakpoint
-CREATE INDEX `user_decks_deck_idx` ON `user_deck` (`deck_id`);
+CREATE INDEX `card_meaning_attributes_attribute_index` ON `card_meaning_attribute` (`attribute_id`);--> statement-breakpoint
+CREATE INDEX `user_card_meanings_due_index` ON `user_card_meaning` (`due`);--> statement-breakpoint
+CREATE INDEX `user_card_meanings_card_meaning_index` ON `user_card_meaning` (`card_meaning_id`);--> statement-breakpoint
+CREATE INDEX `user_card_meaning_reviews_user_index` ON `user_card_meaning_review` (`review`);--> statement-breakpoint
+CREATE INDEX `user_card_meaning_reviews_user_state_index` ON `user_card_meaning_review` (`state`,`review`);--> statement-breakpoint
+CREATE INDEX `user_card_meaning_reviews_progress_index` ON `user_card_meaning_review` (`user_card_meaning_id`,`review`);--> statement-breakpoint
+CREATE INDEX `user_decks_deck_index` ON `user_deck` (`deck_id`);

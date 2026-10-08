@@ -40,8 +40,8 @@ export const userCardMeaningTable = sqliteTable(
     lastReview: integer("last_review", { mode: "timestamp_ms" }),
   },
   (table) => [
-    index("user_card_meanings_due_idx").on(table.due),
-    index("user_card_meanings_card_meaning_idx").on(table.cardMeaningId),
+    index("user_card_meanings_due_index").on(table.due),
+    index("user_card_meanings_card_meaning_index").on(table.cardMeaningId),
 
     unique("user_card_meaning_identity_unique").on(
       table.id,
