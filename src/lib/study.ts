@@ -7,13 +7,14 @@ import {
   type StudyCard,
 } from "@/db/repositories/studyRepository";
 import { saveUserCardMeaningReview } from "@/db/repositories/userRepository";
-import { scheduler, toFsrsCard } from "./scheduler";
+import { createScheduler, toFsrsCard } from "./scheduler";
+import { getSettings } from "@/db/repositories/settingsRepository";
+import { defaultSettings, type StudySettings } from "./settings";
 import { StudyCardUnavailableError } from "./studyErrors";
 import {
   buildStudyQueue,
   getStudyDayStart,
   planStudyQueue,
-  studySettings,
   type StudyOptions,
 } from "./studyQueue";
 
@@ -24,11 +25,13 @@ export async function getStudyQueue(
   options: StudyOptions = {},
   now = new Date(),
 ) {
+  const settings = await getSettings();
+  const configured = { ...settings, ...options };
   const [scheduled, history] = await Promise.all([
     getScheduledStudyCards(),
-    getStudyReviewsToday(getStudyDayStart(now), now),
+    getStudyReviewsToday(getStudyDayStart(now, configured.dayStartHour), now),
   ]);
-  const plan = planStudyQueue(scheduled, history, options, now);
+  const plan = planStudyQueue(scheduled, history, configured, now);
   const newCards =
     plan.newBlocked || plan.newRemainingToday === 0
       ? []
@@ -44,11 +47,11 @@ export async function getNextStudyCard(
   return { ...result, card: result.queue[0] ?? null };
 }
 
-export function previewStudyCard(card: StudyCard, now = new Date()) {
+export function previewStudyCard(card: StudyCard, now = new Date(), settings: StudySettings = defaultSettings) {
   const progress = card.progress
     ? toFsrsCard(card.progress)
     : createEmptyCard(now);
-  return scheduler.repeat(progress, now);
+  return createScheduler(settings).repeat(progress, now);
 }
 
 export async function answerStudyCard(
@@ -63,7 +66,7 @@ export async function answerStudyCard(
   if (!Number.isFinite(now.getTime()))
     throw new Error("Некорректная дата ответа.");
 
-  const card = await getStudyCard(cardMeaningId);
+  const [card, settings] = await Promise.all([getStudyCard(cardMeaningId), getSettings()]);
   if (!card)
     throw new StudyCardUnavailableError(
       "Карточка не найдена в добавленных колодах.",
@@ -77,10 +80,11 @@ export async function answerStudyCard(
       "Срок повторения карточки ещё не наступил.",
     );
 
-  const result = scheduler.next(progress, now, rating);
+  const result = createScheduler(settings).next(progress, now, rating);
   await saveUserCardMeaningReview(cardMeaningId, result, {
-    dayStart: getStudyDayStart(now),
-    maxNewCards: studySettings.newCardsPerDay,
+    dayStart: getStudyDayStart(now, settings.dayStartHour),
+    maxNewCards: settings.newCardsPerDay,
+    maxReviewCards: settings.reviewsPerDay,
   });
   return result;
 }

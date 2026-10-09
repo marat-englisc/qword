@@ -10,9 +10,7 @@ export async function migrateUserData(database: SQLiteDatabase) {
     const applied = await database.getFirstAsync<{ version: number }>(
       "SELECT version FROM app_migrations WHERE version = 1",
     );
-    if (applied) return;
-
-    await database.execAsync(`
+    if (!applied) await database.execAsync(`
       CREATE TEMP TABLE progress_duplicates (
         duplicate_id INTEGER PRIMARY KEY, keep_id INTEGER NOT NULL
       );
@@ -58,6 +56,14 @@ export async function migrateUserData(database: SQLiteDatabase) {
       DROP INDEX IF EXISTS user_card_meanings_card_meaning_index;
 
       INSERT INTO app_migrations(version) VALUES(1);
+    `);
+
+    const settingsApplied = await database.getFirstAsync<{ version: number }>(
+      "SELECT version FROM app_migrations WHERE version = 2",
+    );
+    if (!settingsApplied) await database.execAsync(`
+      CREATE TABLE IF NOT EXISTS app_settings (id INTEGER PRIMARY KEY, value TEXT NOT NULL);
+      INSERT INTO app_migrations(version) VALUES(2);
     `);
   });
 }

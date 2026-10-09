@@ -133,6 +133,8 @@ function AppNavigator() {
       }}
     >
       <Stack.Screen name="index" />
+      <Stack.Screen name="statistics" />
+      <Stack.Screen name="settings" />
       <Stack.Screen name="deck/[id]" />
       <Stack.Screen name="study/[id]" />
     </Stack>

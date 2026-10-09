@@ -9,7 +9,7 @@ import { userCardMeaningTable } from "../schemas/user/userCardMeaning";
 import { userCardMeaningReviewTable } from "../schemas/user/userCardMeaningReview";
 import { userDeckTable } from "../schemas/user/userDeck";
 
-export type ReviewPolicy = { dayStart: Date; maxNewCards: number };
+export type ReviewPolicy = { dayStart: Date; maxNewCards: number; maxReviewCards?: number };
 
 // Called inside runDatabaseTransaction: validation, quota, progress and the log
 // must share one transaction, including simultaneous answers to different cards.
@@ -38,6 +38,18 @@ export async function saveReview(
   validateReview(existing, result);
 
   const { log } = result;
+  if (policy?.maxReviewCards !== undefined && log.state === State.Review) {
+    const [history] = await tx.select({
+      count: sql<number>`COUNT(DISTINCT ${userCardMeaningReviewTable.cardMeaningId})`.mapWith(Number),
+    }).from(userCardMeaningReviewTable).where(and(
+      gte(userCardMeaningReviewTable.review, policy.dayStart),
+      lte(userCardMeaningReviewTable.review, log.review),
+      eq(userCardMeaningReviewTable.state, State.Review),
+      ne(userCardMeaningReviewTable.rating, Rating.Manual),
+    ));
+    if (history.count >= policy.maxReviewCards)
+      throw new StudyCardUnavailableError("Дневной лимит повторений уже достигнут.");
+  }
   if (policy && log.state === State.New) {
     const [history] = await tx
       .select({

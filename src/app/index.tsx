@@ -12,6 +12,7 @@ import {
   Text,
 } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
+import AppNavigation from "@/components/AppNavigation";
 import { useForegroundEffect } from "@/hooks/useForegroundEffect";
 import { useAppStore } from "@/store";
 import { theme } from "@/theme";
@@ -173,7 +174,7 @@ export default function DecksScreen() {
 
               <View className="mb-4 mt-8 flex-row items-center justify-between">
                 <Text variant="titleLarge" style={{ fontWeight: "700" }}>
-                  Колоды
+                  Коллекции
                 </Text>
                 <Text style={{ color: theme.colors.onSurfaceVariant }}>
                   {decks.length}
@@ -262,6 +263,7 @@ export default function DecksScreen() {
           )}
         />
       </View>
+      <AppNavigation active="collections" />
       <Snackbar
         visible={!!error}
         onDismiss={() => setError("")}

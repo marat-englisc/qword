@@ -5,7 +5,9 @@ import type {
   getDeckSummaries,
   DeckSummary,
 } from "@/db/repositories/cardRepository";
-import type { addUserDeck } from "@/db/repositories/userRepository";
+import type { addUserDeck, removeUserDeck } from "@/db/repositories/userRepository";
+import type { getSettings, saveSettings } from "@/db/repositories/settingsRepository";
+import { defaultSettings, type StudySettings } from "./settings";
 import type { answerStudyCard, getStudyQueue, StudyItem } from "@/lib/study";
 import { StudyCardUnavailableError } from "./studyErrors";
 
@@ -25,9 +27,12 @@ type AppState = {
   answered: number;
   revealed: boolean;
   saving: boolean;
+  settings: StudySettings;
   initialize: () => Promise<void>;
   refresh: () => Promise<void>;
   addDeck: (deckId: number) => Promise<void>;
+  removeDeck: (deckId: number) => Promise<void>;
+  updateSettings: (settings: StudySettings) => Promise<void>;
   startSession: (sessionId: string) => Promise<void>;
   refreshSession: () => Promise<void>;
   reveal: () => void;
@@ -38,6 +43,9 @@ type AppDependencies = {
   getCardExamples: typeof getCardExamples;
   getDeckSummaries: typeof getDeckSummaries;
   addUserDeck: typeof addUserDeck;
+  removeUserDeck: typeof removeUserDeck;
+  getSettings: typeof getSettings;
+  saveSettings: typeof saveSettings;
   getStudyQueue: typeof getStudyQueue;
   answerStudyCard: typeof answerStudyCard;
 };
@@ -74,6 +82,7 @@ export function createAppStore(dependencies: AppDependencies) {
     answered: 0,
     revealed: false,
     saving: false,
+    settings: defaultSettings,
 
     initialize: () => {
       if (initializing) return initializing;
@@ -98,18 +107,38 @@ export function createAppStore(dependencies: AppDependencies) {
     refresh: async () => {
       const version = ++overviewVersion;
       const now = new Date();
-      const [decks, overview] = await Promise.all([
+      const [decks, overview, settings] = await Promise.all([
         dependencies.getDeckSummaries(now),
         dependencies.getStudyQueue({}, now),
+        dependencies.getSettings(),
       ]);
       if (version === overviewVersion)
-        set({ decks, overview, ready: true, error: "", now: now.getTime() });
+        set({ decks, overview, settings, ready: true, error: "", now: now.getTime() });
     },
 
     addDeck: async (deckId) => {
       ++overviewVersion;
       await dependencies.addUserDeck(deckId);
       await get().refresh();
+    },
+
+    removeDeck: async (deckId) => {
+      if (savingAnswer) await savingAnswer.catch(() => undefined);
+      await dependencies.removeUserDeck(deckId);
+      ++sessionVersion;
+      ++overviewVersion;
+      set({ decks: get().decks.map((deck) => deck.id === deckId ? { ...deck, added: false } : deck),
+        currentCard: null, session: null, examples: [], revealed: false, overview: null });
+      await get().refresh().catch(console.error);
+    },
+
+    updateSettings: async (settings) => {
+      if (savingAnswer) await savingAnswer.catch(() => undefined);
+      const saved = await dependencies.saveSettings(settings);
+      ++sessionVersion;
+      ++overviewVersion;
+      set({ settings: saved, currentCard: null, session: null, examples: [], revealed: false, overview: null });
+      await get().refresh().catch(console.error);
     },
 
     startSession: async (sessionId) => {

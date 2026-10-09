@@ -1,13 +1,10 @@
 import { State } from "ts-fsrs";
 import type { StudyCard } from "@/db/repositories/studyRepository";
-import { scheduler, toFsrsCard } from "./scheduler";
+import { createScheduler, toFsrsCard } from "./scheduler";
+import { defaultSettings, getStudyDayStart, validateSettings } from "./settings";
 
-export const studySettings = {
-  newCardsPerDay: 10,
-  reviewsPerNewCard: 3,
-  maxDueReviewsForNew: 50,
-  maxLearningCardsForNew: 20,
-};
+export const studySettings = defaultSettings;
+export { getStudyDayStart } from "./settings";
 
 export type StudyOptions = Partial<typeof studySettings> & { deckId?: number };
 
@@ -18,24 +15,14 @@ export type StudyItem = StudyCard & {
 
 type StudyReview = { cardMeaningId: number; state: State };
 
-export function getStudyDayStart(now = new Date()) {
-  const start = new Date(now);
-  start.setHours(4, 0, 0, 0);
-  if (now < start) start.setDate(start.getDate() - 1);
-  return start;
-}
-
 export function planStudyQueue(
   scheduled: StudyCard[],
   history: StudyReview[],
   options: StudyOptions = {},
   now = new Date(),
 ) {
-  const settings = { ...studySettings, ...options };
-  for (const name of Object.keys(studySettings) as (keyof typeof studySettings)[]) {
-    if (!Number.isSafeInteger(settings[name]) || settings[name] < 0)
-      throw new Error(`Некорректная настройка практики: ${name}.`);
-  }
+  const settings = validateSettings({ ...studySettings, ...options });
+  const scheduler = createScheduler(settings);
   if (
     options.deckId !== undefined &&
     (!Number.isSafeInteger(options.deckId) || options.deckId <= 0)
@@ -49,6 +36,9 @@ export function planStudyQueue(
       .map((review) => review.cardMeaningId),
   ).size;
   const newRemainingToday = Math.max(0, settings.newCardsPerDay - introducedToday);
+  const reviewedToday = new Set(history.filter((review) => review.state === State.Review)
+    .map((review) => review.cardMeaningId)).size;
+  const reviewRemainingToday = Math.max(0, settings.reviewsPerDay - reviewedToday);
 
   let reviewsSinceNew = 0;
   for (const review of history) {
@@ -75,7 +65,7 @@ export function planStudyQueue(
       continue;
 
     if (progress.due > now) {
-      if (!nextDue || progress.due < nextDue) nextDue = progress.due;
+      if ((isLearning || reviewRemainingToday > 0) && (!nextDue || progress.due < nextDue)) nextDue = progress.due;
       continue;
     }
 
@@ -107,12 +97,15 @@ export function planStudyQueue(
   const newBlocked =
     dueReviewsTotal > settings.maxDueReviewsForNew ||
     learningTotal >= settings.maxLearningCardsForNew;
-  const newResetAt = getStudyDayStart(now);
+  const newResetAt = getStudyDayStart(now, settings.dayStartHour);
   newResetAt.setDate(newResetAt.getDate() + 1);
 
   return {
     learning,
-    reviews,
+    reviews: reviews.slice(0, reviewRemainingToday),
+    reviewedToday,
+    reviewRemainingToday,
+    reviewLimited: reviews.length > reviewRemainingToday,
     reviewsSinceNew,
     reviewsPerNewCard: settings.reviewsPerNewCard,
     introducedToday,
@@ -155,6 +148,9 @@ export function buildStudyQueue(
     introducedToday: plan.introducedToday,
     newRemainingToday: plan.newRemainingToday,
     newBlocked: plan.newBlocked,
+    reviewedToday: plan.reviewedToday,
+    reviewRemainingToday: plan.reviewRemainingToday,
+    reviewLimited: plan.reviewLimited,
     nextDue: plan.nextDue,
     newResetAt: plan.newResetAt,
   };

@@ -20,9 +20,11 @@ import { previewStudyCard } from "@/lib/study";
 import { StudyCardUnavailableError } from "@/lib/studyErrors";
 import { useAppStore } from "@/store";
 import { theme } from "@/theme";
+import { formatDayStart } from "@/lib/settings";
 
 export default function StudyScreen() {
   const params = useLocalSearchParams<{ id: string | string[] }>();
+  const settings = useAppStore((state) => state.settings);
   const id = typeof params.id === "string" ? params.id : "";
   const {
     currentCard,
@@ -182,9 +184,9 @@ export default function StudyScreen() {
 
   const preview = useMemo(
     () => currentCard && revealed
-      ? previewStudyCard(currentCard, new Date(previewTime))
+      ? previewStudyCard(currentCard, new Date(previewTime), settings)
       : null,
-    [currentCard, revealed, previewTime],
+    [currentCard, revealed, previewTime, settings],
   );
   const nextDue = sessionMatches ? session?.nextDue : null;
   const answerCount = sessionMatches ? answered : 0;
@@ -375,7 +377,7 @@ export default function StudyScreen() {
                     color: theme.colors.onSurfaceVariant,
                   }}
                 >
-                  Дневной лимит новых значений достигнут. Он обновится в 04:00.
+                  {settings.newCardsPerDay === 0 ? "Новые значения отключены в настройках." : `Дневной лимит новых значений достигнут. Он обновится в ${formatDayStart(settings.dayStartHour)}.`}
                 </Text>
               )}
               {validDeck && sessionMatches && session?.newBlocked && (
@@ -388,6 +390,11 @@ export default function StudyScreen() {
                 >
                   Новые значения пока приостановлены. Разберите повторения в
                   добавленных колодах.
+                </Text>
+              )}
+              {validDeck && sessionMatches && session?.reviewLimited && (
+                <Text variant="bodyMedium" style={{ textAlign: "center", color: theme.colors.onSurfaceVariant }}>
+                  {settings.reviewsPerDay === 0 ? "Обычные повторения отключены в настройках. Короткие закрепления доступны." : `Дневной лимит обычных повторений достигнут. Он обновится в ${formatDayStart(settings.dayStartHour)}. Короткие закрепления доступны.`}
                 </Text>
               )}
               {validDeck && (

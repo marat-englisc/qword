@@ -1,5 +1,6 @@
-import { fsrs, Rating, type Card, type Grade } from "ts-fsrs";
+import { date_scheduler, fsrs, Rating, State, type Card, type Grade, type RecordLogItem } from "ts-fsrs";
 import type { userCardMeaningTable } from "@/db/schemas/user/userCardMeaning";
+import { defaultSettings, type StudySettings } from "./settings";
 
 export function toFsrsCard(
   progress: typeof userCardMeaningTable.$inferSelect,
@@ -18,13 +19,34 @@ export function toFsrsCard(
   };
 }
 
-export const scheduler = fsrs({
-  request_retention: 0.9,
-  enable_fuzz: false,
-  enable_short_term: true,
-  learning_steps: ["1m", "10m"],
-  relearning_steps: ["10m"],
-});
+export function createScheduler(settings: StudySettings = defaultSettings) {
+  const engine = fsrs({
+    request_retention: settings.requestRetention,
+    maximum_interval: settings.maximumInterval,
+    enable_fuzz: settings.enableFuzz,
+    enable_short_term: settings.enableShortTerm,
+    learning_steps: settings.learningSteps.map((step) => `${step}m` as const),
+    relearning_steps: settings.relearningSteps.map((step) => `${step}m` as const),
+  });
+  // TS-FSRS 5 keeps Good/Easy intervals above Hard, which can exceed a small
+  // maximum_interval. Apply the user's ceiling to both previews and saved cards.
+  const cap = (result: RecordLogItem, now: Date): RecordLogItem =>
+    result.card.state === State.Review && result.card.scheduled_days > settings.maximumInterval
+      ? { ...result, card: { ...result.card, scheduled_days: settings.maximumInterval,
+        due: date_scheduler(now, settings.maximumInterval, true) } }
+      : result;
+  return {
+    next: (card: Card, now: Date, rating: Grade) => engine.next(card, now, rating, (result) => cap(result, now)),
+    repeat: (card: Card, now: Date) => engine.repeat(card, now, (preview) => {
+      for (const rating of [Rating.Again, Rating.Hard, Rating.Good, Rating.Easy] as const)
+        preview[rating] = cap(preview[rating], now);
+      return preview;
+    }),
+    get_retrievability: engine.get_retrievability.bind(engine),
+  };
+}
+
+export const scheduler = createScheduler();
 
 export const ratings: {
   value: Grade;

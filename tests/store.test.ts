@@ -6,6 +6,7 @@ import { scheduler } from "../src/lib/scheduler";
 import { StudyCardUnavailableError } from "../src/lib/studyErrors";
 import { buildStudyQueue, planStudyQueue } from "../src/lib/studyQueue";
 import { studyCard, studyNow } from "./studyFixtures";
+import { defaultSettings } from "../src/lib/settings";
 
 type Dependencies = Parameters<typeof createAppStore>[0];
 type StudyQueue = Awaited<ReturnType<Dependencies["getStudyQueue"]>>;
@@ -44,6 +45,9 @@ function setup(overrides: Partial<Dependencies> = {}) {
     getStudyQueue: async () => queue(),
     getCardExamples: async () => [],
     addUserDeck: async (deckId) => ({ id: deckId, deckId, createdAt: "2026-10-09", lastReviewedAt: null }),
+    removeUserDeck: async () => {},
+    getSettings: async () => defaultSettings,
+    saveSettings: async (settings) => settings,
     answerStudyCard: async () => scheduler.next(createEmptyCard(studyNow), studyNow, Rating.Good),
     ...overrides,
   };
@@ -292,4 +296,47 @@ test("invalid or unadded deck sessions are rejected without altering the active 
     await assert.rejects(store.getState().startSession(id));
   assert.equal(store.getState().sessionId, "1");
   assert.equal(store.getState().currentCard?.meaning.id, 1);
+});
+
+test("unsubscribing invalidates pending session loads and immediately marks the deck inactive", async () => {
+  const pending = deferred<StudyQueue>();
+  let subscribed = true;
+  const store = setup({
+    getStudyQueue: async (options) => options?.deckId ? pending.promise : queue(),
+    getDeckSummaries: async () => [{ ...deck(1), added: subscribed }],
+    removeUserDeck: async () => { subscribed = false; },
+  });
+  const session = store.getState().startSession("1");
+  await store.getState().removeDeck(1);
+  pending.resolve(queue(1));
+  await session;
+  assert.equal(store.getState().currentCard, null);
+  assert.equal(store.getState().decks[0].added, false);
+  await assert.rejects(store.getState().startSession("1"));
+});
+
+test("failed unsubscribe leaves the active session and subscription intact", async () => {
+  const store = setup({ getStudyQueue: async () => queue(1), removeUserDeck: async () => { throw new Error("write failed"); } });
+  await store.getState().startSession("1");
+  await assert.rejects(store.getState().removeDeck(1), /write failed/);
+  assert.equal(store.getState().currentCard?.meaning.id, 1);
+  assert.equal(store.getState().decks[0].added, true);
+});
+
+test("saving settings clears an old FSRS preview; failed persistence keeps the original settings", async () => {
+  let saved = defaultSettings;
+  const store = setup({
+    getStudyQueue: async () => queue(1), getSettings: async () => saved,
+    saveSettings: async (settings) => { saved = settings; return settings; },
+  });
+  await store.getState().startSession("1");
+  store.getState().reveal();
+  const next = { ...defaultSettings, requestRetention: 0.95 };
+  await store.getState().updateSettings(next);
+  assert.deepEqual(store.getState().settings, next);
+  assert.equal(store.getState().currentCard, null);
+  assert.equal(store.getState().revealed, false);
+  const failing = setup({ saveSettings: async () => { throw new Error("write failed"); } });
+  await assert.rejects(failing.getState().updateSettings(next), /write failed/);
+  assert.deepEqual(failing.getState().settings, defaultSettings);
 });

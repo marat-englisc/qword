@@ -3,6 +3,7 @@ import { createEmptyCard, type RecordLogItem } from "ts-fsrs";
 import { db, runDatabaseTransaction } from "@/config/connection";
 import { getProgressValues } from "../reviewProgress";
 import { saveReview, type ReviewPolicy } from "../queries/saveReview";
+import { removeDeck } from "../queries/removeDeck";
 import { cardTable } from "../schemas/card/card";
 import { cardMeaningTable } from "../schemas/card/cardMeaning";
 import { deckTable } from "../schemas/card/deck";
@@ -56,6 +57,10 @@ export async function getUserCardMeaning(cardMeaningId: number) {
     .limit(1);
 
   return progress;
+}
+
+export async function removeUserDeck(deckId: number) {
+  await runDatabaseTransaction((tx) => removeDeck(tx, deckId));
 }
 
 export async function getUserCardMeanings(deckId?: number) {

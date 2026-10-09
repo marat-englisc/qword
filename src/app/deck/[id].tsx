@@ -26,6 +26,7 @@ import {
 import type { StudyCard } from "@/db/repositories/studyRepository";
 import { useForegroundEffect } from "@/hooks/useForegroundEffect";
 import { formatInterval } from "@/lib/scheduler";
+import { formatDayStart } from "@/lib/settings";
 import { getStudyQueue } from "@/lib/study";
 import { useAppStore } from "@/store";
 import { theme } from "@/theme";
@@ -38,7 +39,10 @@ export default function DeckScreen() {
   const decks = useAppStore((state) => state.decks);
   const refresh = useAppStore((state) => state.refresh);
   const addDeck = useAppStore((state) => state.addDeck);
+  const removeDeck = useAppStore((state) => state.removeDeck);
+  const [confirmRemoval, setConfirmRemoval] = useState(false);
   const now = useAppStore((state) => state.now);
+  const settings = useAppStore((state) => state.settings);
   const [meanings, setMeanings] = useState<StudyCard[]>([]);
   const [study, setStudy] = useState<Awaited<
     ReturnType<typeof getStudyQueue>
@@ -144,6 +148,22 @@ export default function DeckScreen() {
     }
   }
 
+  async function unsubscribe() {
+    if (addingRef.current || !validId) return;
+    addingRef.current = true;
+    setAdding(true);
+    try {
+      await removeDeck(deckId);
+      setStudy(null);
+      setConfirmRemoval(false);
+    } catch {
+      setError("Не удалось отписаться от коллекции. Попробуйте ещё раз.");
+    } finally {
+      addingRef.current = false;
+      setAdding(false);
+    }
+  }
+
   const query = search.trim().toLowerCase();
   const filtered = useMemo(
     () =>
@@ -168,6 +188,8 @@ export default function DeckScreen() {
             title={deck?.name ?? "Колода"}
             titleStyle={{ fontSize: 18 }}
           />
+          {deck?.added && <Appbar.Action icon="playlist-remove" disabled={adding}
+            onPress={() => setConfirmRemoval(true)} accessibilityLabel="Отписаться от коллекции" />}
         </Appbar.Header>
         {loading ? (
           <View className="flex-1 items-center justify-center">
@@ -222,7 +244,7 @@ export default function DeckScreen() {
                   <Button
                     mode="contained"
                     icon="cards-outline"
-                    disabled={!available}
+                    disabled={!available || adding}
                     contentStyle={{ minHeight: 48 }}
                     onPress={() => router.push(`/study/${deckId}`)}
                   >
@@ -242,6 +264,8 @@ export default function DeckScreen() {
                     Добавить к изучению
                   </Button>
                 )}
+                {deck.added && <Button mode="text" icon="playlist-remove" disabled={adding}
+                  onPress={() => setConfirmRemoval(true)}>Отписаться от коллекции</Button>}
                 {deck.added && !available && study?.nextDue && (
                   <Text
                     variant="bodyMedium"
@@ -267,10 +291,12 @@ export default function DeckScreen() {
                     variant="bodySmall"
                     style={{ color: theme.colors.onSurfaceVariant }}
                   >
-                    Дневной лимит новых значений достигнут. Он обновится в
-                    04:00.
+                    {settings.newCardsPerDay === 0 ? "Новые значения отключены в настройках." : `Дневной лимит новых значений достигнут. Он обновится в ${formatDayStart(settings.dayStartHour)}.`}
                   </Text>
                 )}
+                {deck.added && study?.reviewLimited && <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                  {settings.reviewsPerDay === 0 ? "Обычные повторения отключены в настройках." : `Очередь ограничена дневным лимитом повторений. Лимит обновится в ${formatDayStart(settings.dayStartHour)}.`}
+                </Text>}
                 <Text
                   variant="titleMedium"
                   style={{ fontWeight: "700", marginTop: 16 }}
@@ -366,6 +392,17 @@ export default function DeckScreen() {
         )}
       </View>
       <Portal>
+        <Dialog visible={confirmRemoval} onDismiss={() => { if (!adding) setConfirmRemoval(false); }}
+          style={{ width: "90%", maxWidth: 580, alignSelf: "center", backgroundColor: theme.colors.surface }}>
+          <Dialog.Title>Отписаться от коллекции?</Dialog.Title>
+          <Dialog.Content>
+            <Text variant="bodyMedium">«{deck?.name}» больше не будет появляться в практике. Прогресс и история ответов сохранятся. Вы сможете снова добавить коллекцию в любой момент.</Text>
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button disabled={adding} onPress={() => setConfirmRemoval(false)}>Оставить</Button>
+            <Button loading={adding} disabled={adding} onPress={() => void unsubscribe()}>Отписаться</Button>
+          </Dialog.Actions>
+        </Dialog>
         <Dialog
           visible={!!selected}
           onDismiss={() => setSelected(null)}
