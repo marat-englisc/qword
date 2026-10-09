@@ -6,8 +6,8 @@ import type {
   DeckSummary,
 } from "@/db/repositories/cardRepository";
 import type { addUserDeck, removeUserDeck } from "@/db/repositories/userRepository";
-import type { getSettings, saveSettings } from "@/db/repositories/settingsRepository";
-import { defaultSettings, type StudySettings } from "./settings";
+import type { getSettings, saveAppearance, saveSettings } from "@/db/repositories/settingsRepository";
+import { defaultSettings, type Appearance, type StudySettings } from "./settings";
 import type { answerStudyCard, getStudyQueue, StudyItem } from "@/lib/study";
 import { StudyCardUnavailableError } from "./studyErrors";
 
@@ -33,6 +33,7 @@ type AppState = {
   addDeck: (deckId: number) => Promise<void>;
   removeDeck: (deckId: number) => Promise<void>;
   updateSettings: (settings: StudySettings) => Promise<void>;
+  setAppearance: (appearance: Appearance) => Promise<void>;
   startSession: (sessionId: string) => Promise<void>;
   refreshSession: () => Promise<void>;
   reveal: () => void;
@@ -46,6 +47,7 @@ type AppDependencies = {
   removeUserDeck: typeof removeUserDeck;
   getSettings: typeof getSettings;
   saveSettings: typeof saveSettings;
+  saveAppearance: typeof saveAppearance;
   getStudyQueue: typeof getStudyQueue;
   answerStudyCard: typeof answerStudyCard;
 };
@@ -53,8 +55,10 @@ type AppDependencies = {
 export function createAppStore(dependencies: AppDependencies) {
   let sessionVersion = 0;
   let overviewVersion = 0;
+  let appearanceVersion = 0;
   let initializing: Promise<void> | null = null;
   let savingAnswer: ReturnType<typeof answerStudyCard> | null = null;
+  let settingsWrite: Promise<void> = Promise.resolve();
   let refreshingSession: { version: number; promise: Promise<void> } | null =
     null;
 
@@ -106,6 +110,7 @@ export function createAppStore(dependencies: AppDependencies) {
 
     refresh: async () => {
       const version = ++overviewVersion;
+      const appearanceAtStart = appearanceVersion;
       const now = new Date();
       const [decks, overview, settings] = await Promise.all([
         dependencies.getDeckSummaries(now),
@@ -113,7 +118,9 @@ export function createAppStore(dependencies: AppDependencies) {
         dependencies.getSettings(),
       ]);
       if (version === overviewVersion)
-        set({ decks, overview, settings, ready: true, error: "", now: now.getTime() });
+        set({ decks, overview,
+          settings: appearanceAtStart === appearanceVersion ? settings : { ...settings, appearance: get().settings.appearance },
+          ready: true, error: "", now: now.getTime() });
     },
 
     addDeck: async (deckId) => {
@@ -134,11 +141,25 @@ export function createAppStore(dependencies: AppDependencies) {
 
     updateSettings: async (settings) => {
       if (savingAnswer) await savingAnswer.catch(() => undefined);
-      const saved = await dependencies.saveSettings(settings);
-      ++sessionVersion;
-      ++overviewVersion;
-      set({ settings: saved, currentCard: null, session: null, examples: [], revealed: false, overview: null });
-      await get().refresh().catch(console.error);
+      const write = settingsWrite.catch(() => undefined).then(async () => {
+        const saved = await dependencies.saveSettings({ ...settings, appearance: get().settings.appearance });
+        ++sessionVersion;
+        ++overviewVersion;
+        set({ settings: saved, currentCard: null, session: null, examples: [], revealed: false, overview: null });
+        await get().refresh().catch(console.error);
+      });
+      settingsWrite = write;
+      await write;
+    },
+
+    setAppearance: (appearance) => {
+      const write = settingsWrite.catch(() => undefined).then(async () => {
+        const saved = await dependencies.saveAppearance(appearance);
+        ++appearanceVersion;
+        set({ settings: saved });
+      });
+      settingsWrite = write;
+      return write;
     },
 
     startSession: async (sessionId) => {

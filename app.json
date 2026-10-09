@@ -5,7 +5,8 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
+    "backgroundColor": "#F4F6FA",
     "ios": {
       "supportsTablet": true
     },
@@ -35,7 +36,8 @@
       ],
       "expo-sqlite",
       "expo-font",
-      "expo-asset"
+      "expo-asset",
+      "expo-system-ui"
     ],
     "scheme": "qword"
   }

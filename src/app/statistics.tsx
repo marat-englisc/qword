@@ -4,6 +4,7 @@ import { router } from "expo-router";
 import { ActivityIndicator, Button, Chip, Icon, ProgressBar, Snackbar, Text, TouchableRipple } from "react-native-paper";
 import SectionScreen, { Panel, SectionHeading } from "@/components/SectionScreen";
 import { ActivityCalendar, ActivityChart } from "@/components/StatisticsCharts";
+import { Stars } from "@/components/PatriotBrand";
 import { getStatistics } from "@/db/repositories/statisticsRepository";
 import type { StudyStatistics } from "@/db/queries/statistics";
 import { useForegroundEffect } from "@/hooks/useForegroundEffect";
@@ -11,9 +12,10 @@ import { activityDays, dateFromKey, summarizeActivity } from "@/lib/statistics";
 import { ratings } from "@/lib/scheduler";
 import { formatDayStart } from "@/lib/settings";
 import { useAppStore } from "@/store";
-import { theme } from "@/theme";
+import { useAppTheme } from "@/theme";
 
 export default function StatisticsScreen() {
+  const theme = useAppTheme();
   const settings = useAppStore((state) => state.settings);
   const decks = useAppStore((state) => state.decks);
   const overview = useAppStore((state) => state.overview);
@@ -46,25 +48,34 @@ export default function StatisticsScreen() {
   const calendar = days.slice(-84);
   const selected = calendar.find((day) => day.day === selectedDay) ?? days.at(-1);
   const distribution = days.slice(-period).reduce((sum, day) => [sum[0] + day.again, sum[1] + day.hard, sum[2] + day.good, sum[3] + day.easy], [0, 0, 0, 0]);
+  const ratingColors = theme.ratings.map((rating) => rating.color);
 
   return <SectionScreen active="statistics">
     {!data ? <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 16, padding: 24 }}>
       {error ? <><Text style={{ textAlign: "center" }}>{error}</Text><Button mode="contained" onPress={() => setRetry((value) => value + 1)}>Повторить</Button></> : <ActivityIndicator />}
     </View> : <ScrollView contentContainerStyle={{ padding: 24, gap: 20, paddingBottom: 32 }}>
       <SectionHeading title="Статистика" icon="chart-box-outline" caption="Маленькие шаги складываются в большой словарный запас. Вот ваш путь в цифрах." />
-      <View style={{ padding: 24, backgroundColor: theme.colors.primary, borderRadius: 28, gap: 16 }}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-          <Icon source="fire" size={24} color="#FBD9A7" />
-          <Text variant="labelLarge" style={{ color: "#E8DFF8", letterSpacing: 1 }}>ВАША СЕРИЯ</Text>
+      <View style={{ backgroundColor: theme.colors.hero, borderRadius: 24, overflow: "hidden", borderWidth: 1, borderColor: theme.colors.heroBorder }}>
+        <View style={{ padding: 24, gap: 16 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <Icon source="star-circle-outline" size={24} color={theme.colors.onHero} />
+              <Text variant="labelLarge" style={{ color: theme.colors.onHero, letterSpacing: 1.4, fontWeight: "800" }}>ВАША СЕРИЯ</Text>
+            </View>
+            <Stars size={10} color={theme.colors.heroMuted} />
+          </View>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12, alignItems: "baseline" }}>
+            <Text style={{ fontSize: 64, lineHeight: 72, fontWeight: "900", color: theme.colors.onHero }}>{data.streaks.current}</Text>
+            <Text variant="titleMedium" style={{ color: theme.colors.heroMuted }}>дн. подряд</Text>
+          </View>
+          <Text variant="bodyMedium" style={{ color: theme.colors.onHero, lineHeight: 22 }}>{data.streaks.current ? "Регулярность помогает памяти. Продолжайте в своём темпе." : "Начните с одной карточки сегодня — и появится первая отметка."}</Text>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 16, paddingTop: 16, borderTopWidth: 1, borderColor: theme.colors.heroBorder }}>
+            <Text variant="labelMedium" style={{ color: theme.colors.heroMuted }}>Рекорд: {data.streaks.best} дн.</Text>
+            <Text variant="labelMedium" style={{ color: theme.colors.heroMuted }}>Всего ответов: {data.lifetime.answers}</Text>
+          </View>
         </View>
-        <View style={{ flexDirection: "row", gap: 8, alignItems: "baseline" }}>
-          <Text style={{ fontSize: 54, lineHeight: 62, fontWeight: "800", color: "white" }}>{data.streaks.current}</Text>
-          <Text variant="titleMedium" style={{ color: "#E8DFF8" }}>дн. подряд</Text>
-        </View>
-        <Text variant="bodyMedium" style={{ color: "white", lineHeight: 22 }}>{data.streaks.current ? "Регулярность помогает памяти. Продолжайте в своём темпе." : "Начните с одной карточки сегодня — и появится первая отметка."}</Text>
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 16, paddingTop: 12, borderTopWidth: 1, borderColor: "#8E7BBE" }}>
-          <Text variant="labelMedium" style={{ color: "#E8DFF8" }}>Рекорд: {data.streaks.best} дн.</Text>
-          <Text variant="labelMedium" style={{ color: "#E8DFF8" }}>Всего ответов: {data.lifetime.answers}</Text>
+        <View accessible={false} style={{ gap: 4, backgroundColor: theme.colors.onHero }}>
+          {[0, 1].map((stripe) => <View key={stripe} style={{ height: 4, backgroundColor: theme.colors.accent }} />)}
         </View>
       </View>
       {!data.lifetime.answers && <View style={{ gap: 12, padding: 20, borderRadius: 20, backgroundColor: theme.colors.secondaryContainer }}>
@@ -74,18 +85,18 @@ export default function StatisticsScreen() {
       </View>}
       <View style={{ flexDirection: "row", gap: 8 }}>
         {[7, 30, 90].map((count) => <Chip key={count} selected={period === count} showSelectedCheck={false} onPress={() => setPeriod(count)}
-          accessibilityLabel={`Статистика за ${count} дней`} style={{ flex: 1, backgroundColor: period === count ? theme.colors.primaryContainer : theme.colors.surface }} textStyle={{ textAlign: "center", fontSize: 12, marginHorizontal: 6 }}>{count} дней</Chip>)}
+          accessibilityLabel={`Статистика за ${count} дней`} style={{ flex: 1, backgroundColor: period === count ? theme.colors.primaryContainer : theme.colors.surface, borderRadius: 12, borderWidth: 1, borderColor: period === count ? theme.colors.primary : theme.colors.outlineVariant }} textStyle={{ textAlign: "center", fontSize: 12, fontWeight: "700", color: period === count ? theme.colors.onPrimaryContainer : theme.colors.onSurfaceVariant, marginHorizontal: 6 }}>{count} дней</Chip>)}
       </View>
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
         <Metric value={String(totals.answers)} label="ответов" icon="cards-outline" />
-        <Metric value={totals.recallRate === null ? "—" : `${totals.recallRate}%`} label="вспомнили" icon="brain" green />
-        <Metric value={String(totals.introduced)} label="новых значений" icon="sprout-outline" green />
+        <Metric value={totals.recallRate === null ? "—" : `${totals.recallRate}%`} label="вспомнили" icon="brain" accent />
+        <Metric value={String(totals.introduced)} label="новых значений" icon="star-outline" accent />
         <Metric value={`${totals.activeDays}/${period}`} label="дней с практикой" icon="calendar-check-outline" />
       </View>
       <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, lineHeight: 18 }}>«Вспомнили» — доля обычных повторений без оценки «Снова». Новые значения и короткие закрепления в этот показатель не входят.</Text>
       <Panel title="Сегодня в вашем темпе" icon="target">
         <DailyGoal label="Новые значения" done={overview?.introducedToday ?? 0} limit={settings.newCardsPerDay} color={theme.colors.primary} />
-        <DailyGoal label="Обычные повторения" done={overview?.reviewedToday ?? 0} limit={settings.reviewsPerDay} color={theme.colors.secondary} />
+        <DailyGoal label="Обычные повторения" done={overview?.reviewedToday ?? 0} limit={settings.reviewsPerDay} color={theme.colors.accent} />
         <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>Учебный день начинается в {formatDayStart(settings.dayStartHour)}. Лимиты общие для всех коллекций.</Text>
         {!!overview?.queue.length && <Button mode="contained" icon="arrow-right" onPress={() => router.push("/study/all")}>Продолжить практику</Button>}
       </Panel>
@@ -102,11 +113,11 @@ export default function StatisticsScreen() {
       </Panel>
       <Panel title="Как вы отвечаете" icon="gesture-tap-button">
         <View style={{ flexDirection: "row", height: 12, borderRadius: 8, overflow: "hidden", backgroundColor: theme.colors.surfaceVariant }}>
-          {distribution.map((count, index) => count > 0 ? <View key={index} style={{ flex: count, backgroundColor: ratings[index].color }} /> : null)}
+          {distribution.map((count, index) => count > 0 ? <View key={index} style={{ flex: count, backgroundColor: ratingColors[index] }} /> : null)}
         </View>
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
           {ratings.map((rating, index) => <View key={rating.value} style={{ flexBasis: "45%", flexGrow: 1, flexDirection: "row", justifyContent: "space-between", gap: 8 }}>
-            <Text variant="bodyMedium" style={{ color: rating.color }}>{rating.label}</Text><Text variant="titleSmall">{distribution[index]}</Text>
+            <Text variant="bodyMedium" style={{ color: ratingColors[index] }}>{rating.label}</Text><Text variant="titleSmall">{distribution[index]}</Text>
           </View>)}
         </View>
         <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>Все оценки за выбранные {period} дней.</Text>
@@ -114,10 +125,10 @@ export default function StatisticsScreen() {
       <Panel title="Ваш словарный запас" icon="book-open-page-variant-outline">
         <Text variant="headlineMedium" style={{ fontWeight: "800" }}>{data.vocabulary.total - data.vocabulary.fresh} <Text variant="bodyMedium">из {data.vocabulary.total} значений знакомы</Text></Text>
         {[
-          { label: "Ещё не изучены", count: data.vocabulary.fresh, color: "#D9D3E4" },
-          { label: "На коротких шагах", count: data.vocabulary.learning, color: "#C69943" },
+          { label: "Ещё не изучены", count: data.vocabulary.fresh, color: theme.colors.outline },
+          { label: "На коротких шагах", count: data.vocabulary.learning, color: theme.colors.accent },
           { label: "На повторении", count: data.vocabulary.young, color: theme.colors.primary },
-          { label: "Устойчивые", count: data.vocabulary.mature, color: theme.colors.secondary },
+          { label: "Устойчивые", count: data.vocabulary.mature, color: theme.colors.positive },
         ].map((item) => <View key={item.label} style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
           <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: item.color }} /><Text style={{ flex: 1 }}>{item.label}</Text><Text variant="titleSmall">{item.count}</Text>
         </View>)}
@@ -140,7 +151,7 @@ export default function StatisticsScreen() {
         {decks.filter((deck) => deck.added || deck.studiedMeaningCount > 0).map((deck) => <TouchableRipple key={deck.id} onPress={() => router.push(`/deck/${deck.id}`)} accessibilityRole="button" accessibilityLabel={`Прогресс коллекции ${deck.name}`}>
           <View style={{ gap: 8, paddingVertical: 6 }}>
             <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}><Text variant="titleSmall" style={{ flex: 1 }}>{deck.name}</Text><Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant }}>{deck.added ? "Изучается" : "На паузе"}</Text></View>
-            <ProgressBar progress={deck.meaningCount ? deck.studiedMeaningCount / deck.meaningCount : 0} color={theme.colors.secondary} style={{ height: 6, borderRadius: 6 }} />
+            <ProgressBar progress={deck.meaningCount ? deck.studiedMeaningCount / deck.meaningCount : 0} color={theme.colors.primary} style={{ height: 6, borderRadius: 6, backgroundColor: theme.colors.surfaceVariant }} />
             <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>{deck.studiedMeaningCount} / {deck.meaningCount} знакомых значений</Text>
           </View>
         </TouchableRipple>)}
@@ -152,15 +163,17 @@ export default function StatisticsScreen() {
   </SectionScreen>;
 }
 
-function Metric({ value, label, icon, green = false }: { value: string; label: string; icon: string; green?: boolean }) {
-  return <View style={{ flexBasis: "45%", flexGrow: 1, padding: 18, borderRadius: 22, gap: 8, backgroundColor: green ? theme.colors.secondaryContainer : theme.colors.surface }}>
-    <Icon source={icon} size={22} color={green ? theme.colors.secondary : theme.colors.primary} />
-    <Text variant="headlineMedium" style={{ fontWeight: "800" }}>{value}</Text>
-    <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>{label}</Text>
+function Metric({ value, label, icon, accent = false }: { value: string; label: string; icon: string; accent?: boolean }) {
+  const theme = useAppTheme();
+  return <View style={{ flexBasis: "45%", flexGrow: 1, padding: 18, borderRadius: 18, gap: 8, borderWidth: 1, borderColor: accent ? theme.colors.accentContainer : theme.colors.outlineVariant, backgroundColor: accent ? theme.colors.accentContainer : theme.colors.surface }}>
+    <Icon source={icon} size={22} color={accent ? theme.colors.onAccentContainer : theme.colors.primary} />
+    <Text variant="headlineMedium" style={{ fontWeight: "800", color: accent ? theme.colors.onAccentContainer : theme.colors.onSurface }}>{value}</Text>
+    <Text variant="bodySmall" style={{ color: accent ? theme.colors.onAccentContainer : theme.colors.onSurfaceVariant }}>{label}</Text>
   </View>;
 }
 
 function DailyGoal({ label, done, limit, color }: { label: string; done: number; limit: number; color: string }) {
+  const theme = useAppTheme();
   return <View style={{ gap: 8 }}>
     <View style={{ flexDirection: "row", gap: 12 }}><Text variant="bodyMedium" style={{ flex: 1 }}>{label}</Text><Text variant="labelLarge">{limit ? `${done} / ${limit}` : "Отключены"}</Text></View>
     <ProgressBar progress={limit ? Math.min(1, done / limit) : 0} color={color} style={{ height: 8, borderRadius: 8, backgroundColor: theme.colors.surfaceVariant }} />

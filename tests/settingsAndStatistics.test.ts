@@ -6,7 +6,7 @@ import { createSQLiteClient } from "../src/config/sqliteAdapter";
 import { migrateUserData } from "../src/db/migrateUserData";
 import { readDeckSummaries } from "../src/db/queries/deckSummaries";
 import { removeDeck } from "../src/db/queries/removeDeck";
-import { readSettings, writeSettings } from "../src/db/queries/settings";
+import { readSettings, writeAppearance, writeSettings } from "../src/db/queries/settings";
 import { readStatistics } from "../src/db/queries/statistics";
 import { saveReview } from "../src/db/queries/saveReview";
 import { getProgressValues } from "../src/db/reviewProgress";
@@ -53,10 +53,25 @@ test("settings migration upgrades an installed v1 database and preserves saved s
 test("malformed settings and learning steps are rejected; disabled daily limits and empty steps are valid", () => {
   for (const value of [-1, 0.5, NaN, Infinity, 201]) assert.throws(() => validateSettings({ ...defaultSettings, newCardsPerDay: value }));
   for (const value of [0.69, 1, NaN]) assert.throws(() => validateSettings({ ...defaultSettings, requestRetention: value }));
+  for (const appearance of ["system", "blue", null, 1]) assert.throws(() => validateSettings({ ...defaultSettings, appearance }));
   for (const steps of [[10, 1], [1, 1], [0], [1441], [1.5]]) assert.throws(() => validateSettings({ ...defaultSettings, learningSteps: steps }));
   for (const text of ["1.5, 10", "abc", "1,,", "1m, 10m"]) assert.throws(() => parseLearningSteps(text));
   assert.deepEqual(parseLearningSteps(" 1, 10; 30 "), [1, 10, 30]);
   assert.deepEqual(validateSettings({ ...defaultSettings, newCardsPerDay: 0, reviewsPerDay: 0, learningSteps: [] }).learningSteps, []);
+});
+
+test("older saved settings default to light; changing appearance preserves algorithm values across restart", async () => {
+  const f = await fixture();
+  try {
+    const { appearance: _oldAppearance, ...legacy } = { ...defaultSettings, newCardsPerDay: 19, requestRetention: 0.96, learningSteps: [2, 15] };
+    f.raw.prepare("INSERT INTO app_settings(id, value) VALUES(1, ?)").run(JSON.stringify(legacy));
+    assert.equal((await readSettings(f.db)).appearance, "light");
+    await f.runDatabaseTransaction((tx) => writeAppearance(tx, "dark"));
+    await migrateUserData(f.database);
+    assert.deepEqual(await readSettings(f.db), { ...legacy, appearance: "dark" });
+    await f.runDatabaseTransaction((tx) => writeAppearance(tx, "light"));
+    assert.deepEqual(await readSettings(f.db), { ...legacy, appearance: "light" });
+  } finally { f.close(); }
 });
 
 test("custom FSRS retention, maximum interval and learning steps affect real scheduling", () => {

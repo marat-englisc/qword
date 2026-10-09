@@ -19,10 +19,11 @@ import { formatInterval, ratings } from "@/lib/scheduler";
 import { previewStudyCard } from "@/lib/study";
 import { StudyCardUnavailableError } from "@/lib/studyErrors";
 import { useAppStore } from "@/store";
-import { theme } from "@/theme";
+import { useAppTheme } from "@/theme";
 import { formatDayStart } from "@/lib/settings";
 
 export default function StudyScreen() {
+  const theme = useAppTheme();
   const params = useLocalSearchParams<{ id: string | string[] }>();
   const settings = useAppStore((state) => state.settings);
   const id = typeof params.id === "string" ? params.id : "";
@@ -196,19 +197,34 @@ export default function StudyScreen() {
       <View className="w-full max-w-[620px] flex-1 self-center">
         <Appbar.Header
           statusBarHeight={0}
-          style={{ backgroundColor: theme.colors.background }}
+          style={{
+            backgroundColor: theme.colors.hero,
+            borderBottomWidth: 3,
+            borderBottomColor: theme.colors.accent,
+            marginBottom: 18,
+          }}
         >
           <Appbar.Action
             icon="close"
+            color={theme.colors.onHero}
             onPress={goBack}
             disabled={saving}
             accessibilityLabel="Завершить практику"
           />
           <Appbar.Content
             title={id === "all" ? "Практика" : (deck?.name ?? "Практика")}
-            titleStyle={{ fontSize: 18 }}
+            color={theme.colors.onHero}
+            titleStyle={{ fontSize: 18, fontWeight: "800" }}
           />
-          <Text variant="labelLarge" style={{ marginRight: 20 }}>
+          <Text variant="labelLarge" style={{
+            marginRight: 16,
+            paddingHorizontal: 10,
+            paddingVertical: 6,
+            color: theme.colors.onHero,
+            backgroundColor: theme.colors.heroBorder,
+            borderRadius: 10,
+            fontWeight: "700",
+          }}>
             Ответов: {answerCount}
           </Text>
         </Appbar.Header>
@@ -221,9 +237,9 @@ export default function StudyScreen() {
           <>
             <View className="gap-3 px-6 pb-4">
               <View className="flex-row flex-wrap gap-2">
-                <Chip compact>{session?.learningCount ?? 0} в обучении</Chip>
-                <Chip compact>{session?.reviewCount ?? 0} повторений</Chip>
-                <Chip compact>{session?.newCount ?? 0} новых</Chip>
+                <Chip compact style={{ backgroundColor: theme.colors.primaryContainer }} textStyle={{ color: theme.colors.onPrimaryContainer, fontWeight: "700" }}>{session?.learningCount ?? 0} в обучении</Chip>
+                <Chip compact style={{ backgroundColor: theme.colors.surfaceVariant }} textStyle={{ color: theme.colors.onSurfaceVariant, fontWeight: "700" }}>{session?.reviewCount ?? 0} повторений</Chip>
+                <Chip compact style={{ backgroundColor: theme.colors.accentContainer }} textStyle={{ color: theme.colors.onAccentContainer, fontWeight: "700" }}>{session?.newCount ?? 0} новых</Chip>
               </View>
               <Text
                 variant="bodySmall"
@@ -258,6 +274,7 @@ export default function StudyScreen() {
             <View
               className="gap-3 px-6 pb-4 pt-3"
               style={{
+                backgroundColor: theme.colors.surface,
                 borderTopWidth: 1,
                 borderColor: theme.colors.outlineVariant,
               }}
@@ -274,17 +291,17 @@ export default function StudyScreen() {
                     Когда повторить это значение
                   </Text>
                   <View className="flex-row flex-wrap gap-2">
-                    {ratings.map((rating) => (
+                    {ratings.map((rating, index) => (
                       <View
                         key={rating.value}
                         style={{ width: "48%", flexGrow: 1 }}
                       >
                         <Button
                           mode="contained"
-                          buttonColor={rating.background}
-                          textColor={rating.color}
+                          buttonColor={theme.ratings[index].background}
+                          textColor={theme.ratings[index].color}
                           contentStyle={{ minHeight: 48 }}
-                          labelStyle={{ marginHorizontal: 8, fontSize: 13 }}
+                          labelStyle={{ marginHorizontal: 8, fontSize: 13, fontWeight: "700" }}
                           disabled={saving}
                           onPress={() => void rate(rating.value)}
                           accessibilityLabel={`${rating.label}, через ${formatInterval(preview[rating.value].card.due, previewTime)}`}
@@ -299,6 +316,9 @@ export default function StudyScreen() {
               ) : (
                 <Button
                   mode="contained"
+                  icon="star-outline"
+                  buttonColor={theme.colors.accent}
+                  textColor={theme.colors.onAccent}
                   onPress={reveal}
                   disabled={saving}
                   contentStyle={{ minHeight: 52 }}
@@ -318,14 +338,19 @@ export default function StudyScreen() {
           >
             <View className="items-center gap-5">
               <Avatar.Icon
-                icon={loadFailed ? "alert-circle-outline" : validDeck ? "check" : "cards-outline"}
+                icon={loadFailed ? "alert-circle-outline" : validDeck ? "star-check-outline" : "cards-outline"}
                 size={80}
-                color={theme.colors.secondary}
-                style={{ backgroundColor: theme.colors.secondaryContainer }}
+                color={theme.colors.onPrimaryContainer}
+                style={{
+                  backgroundColor: theme.colors.primaryContainer,
+                  borderWidth: 2,
+                  borderColor: theme.colors.outlineVariant,
+                  borderRadius: 24,
+                }}
               />
               <Text
                 variant="headlineMedium"
-                style={{ fontWeight: "700", textAlign: "center" }}
+                style={{ fontWeight: "900", textAlign: "center" }}
               >
                 {!validId || (id !== "all" && !deck)
                   ? "Колода не найдена"

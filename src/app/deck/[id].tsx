@@ -4,10 +4,8 @@ import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import {
   ActivityIndicator,
   Appbar,
-  Avatar,
   Button,
   Dialog,
-  Divider,
   Icon,
   IconButton,
   Portal,
@@ -29,9 +27,10 @@ import { formatInterval } from "@/lib/scheduler";
 import { formatDayStart } from "@/lib/settings";
 import { getStudyQueue } from "@/lib/study";
 import { useAppStore } from "@/store";
-import { theme } from "@/theme";
+import { useAppTheme } from "@/theme";
 
 export default function DeckScreen() {
+  const theme = useAppTheme();
   const { id } = useLocalSearchParams<{ id: string | string[] }>();
   const deckId =
     typeof id === "string" && /^[1-9]\d*$/.test(id) ? Number(id) : NaN;
@@ -181,15 +180,25 @@ export default function DeckScreen() {
       <View className="w-full max-w-[620px] flex-1 self-center">
         <Appbar.Header
           statusBarHeight={0}
-          style={{ backgroundColor: theme.colors.background }}
+          style={{
+            backgroundColor: theme.colors.background,
+            borderBottomWidth: 1,
+            borderBottomColor: theme.colors.outlineVariant,
+          }}
         >
           <Appbar.BackAction onPress={goBack} accessibilityLabel="К колодам" />
           <Appbar.Content
             title={deck?.name ?? "Колода"}
-            titleStyle={{ fontSize: 18 }}
+            titleStyle={{ fontSize: 18, fontWeight: "800" }}
           />
-          {deck?.added && <Appbar.Action icon="playlist-remove" disabled={adding}
-            onPress={() => setConfirmRemoval(true)} accessibilityLabel="Отписаться от коллекции" />}
+          {deck?.added && (
+            <Appbar.Action
+              icon="playlist-remove"
+              disabled={adding}
+              onPress={() => setConfirmRemoval(true)}
+              accessibilityLabel="Отписаться от коллекции"
+            />
+          )}
         </Appbar.Header>
         {loading ? (
           <View className="flex-1 items-center justify-center">
@@ -214,25 +223,67 @@ export default function DeckScreen() {
             contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 24 }}
             keyboardShouldPersistTaps="handled"
             ListHeaderComponent={
-              <View className="gap-4 pb-3 pt-2">
-                <Avatar.Icon
-                  icon="cards-outline"
-                  size={64}
-                  color={theme.colors.primary}
+              <View className="gap-4 pb-4 pt-4">
+                <View
                   style={{
-                    backgroundColor: theme.colors.primaryContainer,
-                    borderRadius: 20,
+                    backgroundColor: theme.colors.hero,
+                    borderRadius: 24,
+                    padding: 22,
+                    gap: 16,
+                    borderBottomWidth: 5,
+                    borderBottomColor: theme.colors.accent,
                   }}
-                />
-                <Text variant="headlineLarge" style={{ fontWeight: "700" }}>
-                  {deck.name}
-                </Text>
-                <Text
-                  variant="bodyLarge"
-                  style={{ color: theme.colors.onSurfaceVariant }}
                 >
-                  Слов: {deck.wordCount} · значений: {deck.meaningCount}
-                </Text>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 14,
+                    }}
+                  >
+                    <View style={{ flex: 1, gap: 6 }}>
+                      <Text
+                        variant="labelSmall"
+                        style={{
+                          color: theme.colors.heroMuted,
+                          fontWeight: "800",
+                          letterSpacing: 2,
+                        }}
+                      >
+                        QWORD / КОЛЛЕКЦИЯ
+                      </Text>
+                      <View
+                        accessible={false}
+                        style={{ flexDirection: "row", gap: 5 }}
+                      >
+                        {[0, 1, 2].map((star) => (
+                          <Icon
+                            key={star}
+                            source="star"
+                            size={13}
+                            color={theme.colors.star}
+                          />
+                        ))}
+                      </View>
+                    </View>
+                  </View>
+                  <Text
+                    variant="headlineMedium"
+                    style={{
+                      color: theme.colors.onHero,
+                      fontWeight: "900",
+                      letterSpacing: -0.5,
+                    }}
+                  >
+                    {deck.name}
+                  </Text>
+                  <Text
+                    variant="bodyMedium"
+                    style={{ color: theme.colors.heroMuted }}
+                  >
+                    Слов: {deck.wordCount} · значений: {deck.meaningCount}
+                  </Text>
+                </View>
                 <Text
                   variant="bodyMedium"
                   style={{ color: theme.colors.onSurfaceVariant }}
@@ -244,6 +295,8 @@ export default function DeckScreen() {
                   <Button
                     mode="contained"
                     icon="cards-outline"
+                    buttonColor={theme.colors.accent}
+                    textColor={theme.colors.onAccent}
                     disabled={!available || adding}
                     contentStyle={{ minHeight: 48 }}
                     onPress={() => router.push(`/study/${deckId}`)}
@@ -256,6 +309,8 @@ export default function DeckScreen() {
                   <Button
                     mode="contained"
                     icon="plus"
+                    buttonColor={theme.colors.accent}
+                    textColor={theme.colors.onAccent}
                     loading={adding}
                     disabled={adding || !deck.meaningCount}
                     contentStyle={{ minHeight: 48 }}
@@ -264,8 +319,17 @@ export default function DeckScreen() {
                     Добавить к изучению
                   </Button>
                 )}
-                {deck.added && <Button mode="text" icon="playlist-remove" disabled={adding}
-                  onPress={() => setConfirmRemoval(true)}>Отписаться от коллекции</Button>}
+                {deck.added && (
+                  <Button
+                    mode="text"
+                    icon="playlist-remove"
+                    textColor={theme.colors.onSurfaceVariant}
+                    disabled={adding}
+                    onPress={() => setConfirmRemoval(true)}
+                  >
+                    Отписаться от коллекции
+                  </Button>
+                )}
                 {deck.added && !available && study?.nextDue && (
                   <Text
                     variant="bodyMedium"
@@ -291,15 +355,24 @@ export default function DeckScreen() {
                     variant="bodySmall"
                     style={{ color: theme.colors.onSurfaceVariant }}
                   >
-                    {settings.newCardsPerDay === 0 ? "Новые значения отключены в настройках." : `Дневной лимит новых значений достигнут. Он обновится в ${formatDayStart(settings.dayStartHour)}.`}
+                    {settings.newCardsPerDay === 0
+                      ? "Новые значения отключены в настройках."
+                      : `Дневной лимит новых значений достигнут. Он обновится в ${formatDayStart(settings.dayStartHour)}.`}
                   </Text>
                 )}
-                {deck.added && study?.reviewLimited && <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
-                  {settings.reviewsPerDay === 0 ? "Обычные повторения отключены в настройках." : `Очередь ограничена дневным лимитом повторений. Лимит обновится в ${formatDayStart(settings.dayStartHour)}.`}
-                </Text>}
+                {deck.added && study?.reviewLimited && (
+                  <Text
+                    variant="bodySmall"
+                    style={{ color: theme.colors.onSurfaceVariant }}
+                  >
+                    {settings.reviewsPerDay === 0
+                      ? "Обычные повторения отключены в настройках."
+                      : `Очередь ограничена дневным лимитом повторений. Лимит обновится в ${formatDayStart(settings.dayStartHour)}.`}
+                  </Text>
+                )}
                 <Text
                   variant="titleMedium"
-                  style={{ fontWeight: "700", marginTop: 16 }}
+                  style={{ fontWeight: "900", marginTop: 16 }}
                 >
                   Значения в колоде
                 </Text>
@@ -308,11 +381,16 @@ export default function DeckScreen() {
                   value={search}
                   onChangeText={setSearch}
                   accessibilityLabel="Найти слово или значение"
-                  style={{ backgroundColor: theme.colors.surfaceVariant }}
+                  style={{
+                    backgroundColor: theme.colors.surface,
+                    borderWidth: 1,
+                    borderColor: theme.colors.outlineVariant,
+                    borderRadius: 16,
+                  }}
                 />
               </View>
             }
-            ItemSeparatorComponent={() => <Divider />}
+            ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
             ListEmptyComponent={
               <Text
                 style={{
@@ -338,10 +416,17 @@ export default function DeckScreen() {
                   }}
                   accessibilityRole="button"
                   accessibilityLabel={`Посмотреть значение ${item.word.title}: ${item.meaning.meaningTranslation}`}
+                  style={{
+                    backgroundColor: theme.colors.surface,
+                    borderWidth: 1,
+                    borderColor: theme.colors.outlineVariant,
+                    borderRadius: 16,
+                    overflow: "hidden",
+                  }}
                 >
-                  <View className="flex-row items-center gap-3 py-4">
+                  <View className="flex-row items-center gap-3 p-4">
                     <View className="flex-1 gap-1">
-                      <Text variant="titleMedium" style={{ fontWeight: "600" }}>
+                      <Text variant="titleMedium" style={{ fontWeight: "800" }}>
                         {item.word.title}
                       </Text>
                       {!!item.word.transcription && (
@@ -368,8 +453,15 @@ export default function DeckScreen() {
                       variant="labelSmall"
                       style={{
                         color: studied
-                          ? theme.colors.secondary
-                          : theme.colors.primary,
+                          ? theme.colors.onPositiveContainer
+                          : theme.colors.onAccentContainer,
+                        backgroundColor: studied
+                          ? theme.colors.positiveContainer
+                          : theme.colors.accentContainer,
+                        borderRadius: 8,
+                        paddingHorizontal: 8,
+                        paddingVertical: 5,
+                        fontWeight: "700",
                       }}
                     >
                       {studied ? "Знакомое" : "Новое"}
@@ -392,15 +484,38 @@ export default function DeckScreen() {
         )}
       </View>
       <Portal>
-        <Dialog visible={confirmRemoval} onDismiss={() => { if (!adding) setConfirmRemoval(false); }}
-          style={{ width: "90%", maxWidth: 580, alignSelf: "center", backgroundColor: theme.colors.surface }}>
+        <Dialog
+          visible={confirmRemoval}
+          onDismiss={() => {
+            if (!adding) setConfirmRemoval(false);
+          }}
+          style={{
+            width: "90%",
+            maxWidth: 580,
+            alignSelf: "center",
+            backgroundColor: theme.colors.surface,
+          }}
+        >
           <Dialog.Title>Отписаться от коллекции?</Dialog.Title>
           <Dialog.Content>
-            <Text variant="bodyMedium">«{deck?.name}» больше не будет появляться в практике. Прогресс и история ответов сохранятся. Вы сможете снова добавить коллекцию в любой момент.</Text>
+            <Text variant="bodyMedium">
+              «{deck?.name}» больше не будет появляться в практике. Прогресс и
+              история ответов сохранятся. Вы сможете снова добавить коллекцию в
+              любой момент.
+            </Text>
           </Dialog.Content>
           <Dialog.Actions>
-            <Button disabled={adding} onPress={() => setConfirmRemoval(false)}>Оставить</Button>
-            <Button loading={adding} disabled={adding} onPress={() => void unsubscribe()}>Отписаться</Button>
+            <Button disabled={adding} onPress={() => setConfirmRemoval(false)}>
+              Оставить
+            </Button>
+            <Button
+              textColor={theme.colors.accent}
+              loading={adding}
+              disabled={adding}
+              onPress={() => void unsubscribe()}
+            >
+              Отписаться
+            </Button>
           </Dialog.Actions>
         </Dialog>
         <Dialog

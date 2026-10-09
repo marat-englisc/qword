@@ -1,10 +1,73 @@
 import { useRef, useState } from "react";
-import { KeyboardAvoidingView, Platform, ScrollView, View } from "react-native";
-import { Button, Chip, HelperText, Icon, Snackbar, Switch, Text, TextInput } from "react-native-paper";
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, View } from "react-native";
+import { ActivityIndicator, Button, Chip, HelperText, Icon, Snackbar, Switch, Text, TextInput } from "react-native-paper";
 import SectionScreen, { Panel, SectionHeading } from "@/components/SectionScreen";
-import { defaultSettings, parseLearningSteps, settingLimits, validateSettings, type NumericSetting, type StudySettings } from "@/lib/settings";
+import { defaultSettings, parseLearningSteps, settingLimits, validateSettings, type Appearance, type NumericSetting, type StudySettings } from "@/lib/settings";
 import { useAppStore } from "@/store";
-import { theme } from "@/theme";
+import { useAppTheme } from "@/theme";
+
+function AppearancePicker() {
+  const theme = useAppTheme();
+  const appearance = useAppStore((state) => state.settings.appearance);
+  const setAppearance = useAppStore((state) => state.setAppearance);
+  const [pending, setPending] = useState<Appearance | null>(null);
+  const pendingRef = useRef(false);
+  const [error, setError] = useState("");
+
+  async function choose(value: Appearance) {
+    if (pendingRef.current || value === appearance) return;
+    pendingRef.current = true;
+    setPending(value);
+    setError("");
+    try { await setAppearance(value); }
+    catch { setError("Не удалось сохранить тему. Попробуйте ещё раз."); }
+    finally { pendingRef.current = false; setPending(null); }
+  }
+
+  return <Panel title="Цвета свободы" icon="palette-outline">
+    <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>Звёзды, полосы и ваш любимый свет.</Text>
+    <View style={{ flexDirection: "row", gap: 12 }}>
+      {(["light", "dark"] as const).map((value) => {
+        const selected = appearance === value;
+        const dark = value === "dark";
+        return <Pressable key={value} onPress={() => void choose(value)} disabled={pending !== null}
+          accessibilityRole="button" accessibilityLabel={dark ? "Тёмная тема" : "Светлая тема"}
+          accessibilityState={{ selected, disabled: pending !== null }} aria-pressed={selected}
+          style={({ pressed }) => ({ flex: 1, padding: 8, borderRadius: 18, gap: 10, opacity: pressed ? 0.8 : 1,
+            borderWidth: 2, borderColor: selected ? theme.colors.primary : theme.colors.outlineVariant,
+            backgroundColor: selected ? theme.colors.primaryContainer : theme.colors.surface })}>
+          <View accessible={false} importantForAccessibility="no-hide-descendants" pointerEvents="none"
+            style={{ height: 98, overflow: "hidden", borderRadius: 10, padding: 10, gap: 7,
+              backgroundColor: dark ? "#0A1429" : "#F5F7FC" }}>
+            <View style={{ height: 33, borderRadius: 5, overflow: "hidden", backgroundColor: "#132B54" }}>
+              <View style={{ position: "absolute", left: 8, top: 6, flexDirection: "row", gap: 3 }}>
+                {[0, 1, 2].map((star) => <Icon key={star} source="star" size={9} color="#FFFFFF" />)}
+              </View>
+              <View style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: "38%", gap: 4, paddingTop: 3, transform: [{ skewX: "-14deg" }] }}>
+                {[0, 1, 2, 3].map((stripe) => <View key={stripe} style={{ height: 4, backgroundColor: stripe % 2 ? "#FFFFFF" : "#DB3447" }} />)}
+              </View>
+            </View>
+            <View style={{ height: 11, width: "62%", borderRadius: 3, backgroundColor: dark ? "#E6EDFA" : "#14274A" }} />
+            <View style={{ height: 19, borderRadius: 5, backgroundColor: dark ? "#1B2E4D" : "#FFFFFF", borderWidth: 1,
+              borderColor: dark ? "#2D4368" : "#DFE5F0", borderLeftWidth: 3, borderLeftColor: "#DB3447" }} />
+          </View>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+            <Text variant="labelLarge" style={{ flex: 1, fontWeight: "700", color: selected ? theme.colors.onPrimaryContainer : theme.colors.onSurface }}>
+              {dark ? "Тёмная" : "Светлая"}
+            </Text>
+            {pending === value ? <ActivityIndicator size={18} /> : <Icon source={selected ? "check-circle" : dark ? "weather-night" : "white-balance-sunny"}
+              size={18} color={selected ? theme.colors.primary : theme.colors.onSurfaceVariant} />}
+          </View>
+        </Pressable>;
+      })}
+    </View>
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
+      <Icon source="check-decagram-outline" size={16} color={theme.colors.primary} />
+      <Text variant="bodySmall" style={{ flex: 1, color: theme.colors.onSurfaceVariant }}>Тема применяется сразу и сохраняется автоматически.</Text>
+    </View>
+    {!!error && <HelperText type="error" visible accessibilityLiveRegion="polite">{error}</HelperText>}
+  </Panel>;
+}
 
 function draftFromSettings(settings: StudySettings) {
   return Object.fromEntries((Object.keys(settingLimits) as NumericSetting[]).map((key) =>
@@ -23,6 +86,7 @@ const numericFields: Record<NumericSetting, { label: string; help: string; unit?
 };
 
 export default function SettingsScreen() {
+  const theme = useAppTheme();
   const settings = useAppStore((state) => state.settings);
   const updateSettings = useAppStore((state) => state.updateSettings);
   const [draft, setDraft] = useState(() => draftFromSettings(settings));
@@ -51,6 +115,7 @@ export default function SettingsScreen() {
     if (invalidFields.length) { setError("Проверьте числовые поля: значение должно попадать в указанный диапазон."); return; }
     try {
       const next = validateSettings({
+        appearance: settings.appearance,
         ...Object.fromEntries(Object.entries(draft).map(([key, value]) => [key, key === "requestRetention" ? Number(value) / 100 : Number(value)])),
         enableFuzz, enableShortTerm, learningSteps: parseLearningSteps(learningSteps), relearningSteps: parseLearningSteps(relearningSteps),
       });
@@ -100,6 +165,7 @@ export default function SettingsScreen() {
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"} enabled={Platform.OS !== "web"}>
       <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={{ padding: 24, gap: 20, paddingBottom: 32 }}>
         <SectionHeading title="Настройки" icon="tune-variant" caption="Ваш ритм, ваша нагрузка. Настройте обучение так, чтобы хотелось возвращаться." />
+        <AppearancePicker />
         <Panel title="Ежедневный ритм" icon="calendar-check-outline">
           <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>Быстрый выбор нагрузки</Text>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>

@@ -3,7 +3,7 @@ import {
   getDeckSummaries,
 } from "@/db/repositories/cardRepository";
 import { addUserDeck, removeUserDeck } from "@/db/repositories/userRepository";
-import { getSettings, saveSettings } from "@/db/repositories/settingsRepository";
+import { getSettings, saveAppearance, saveSettings } from "@/db/repositories/settingsRepository";
 import { answerStudyCard, getStudyQueue } from "@/lib/study";
 import { createAppStore } from "@/lib/appStore";
 
@@ -14,6 +14,7 @@ export const useAppStore = createAppStore({
   removeUserDeck,
   getSettings,
   saveSettings,
+  saveAppearance,
   getStudyQueue,
   answerStudyCard,
 });

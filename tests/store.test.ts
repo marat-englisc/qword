@@ -48,6 +48,7 @@ function setup(overrides: Partial<Dependencies> = {}) {
     removeUserDeck: async () => {},
     getSettings: async () => defaultSettings,
     saveSettings: async (settings) => settings,
+    saveAppearance: async (appearance) => ({ ...defaultSettings, appearance }),
     answerStudyCard: async () => scheduler.next(createEmptyCard(studyNow), studyNow, Rating.Good),
     ...overrides,
   };
@@ -339,4 +340,74 @@ test("saving settings clears an old FSRS preview; failed persistence keeps the o
   const failing = setup({ saveSettings: async () => { throw new Error("write failed"); } });
   await assert.rejects(failing.getState().updateSettings(next), /write failed/);
   assert.deepEqual(failing.getState().settings, defaultSettings);
+});
+
+test("changing appearance preserves the open card, answer reveal and active session", async () => {
+  const store = setup({ getStudyQueue: async () => queue(1) });
+  await store.getState().startSession("1");
+  store.getState().reveal();
+  store.setState({ answered: 3 });
+  const before = store.getState();
+  await store.getState().setAppearance("dark");
+  const after = store.getState();
+  assert.equal(after.settings.appearance, "dark");
+  assert.equal(after.session, before.session);
+  assert.equal(after.currentCard, before.currentCard);
+  assert.equal(after.examples, before.examples);
+  assert.equal(after.sessionId, "1");
+  assert.equal(after.revealed, true);
+  assert.equal(after.answered, 3);
+});
+
+test("appearance and algorithm writes are serialized and a stale draft cannot restore the old theme", async () => {
+  let persisted = { ...defaultSettings };
+  const appearanceWrite = deferred<typeof defaultSettings>();
+  let algorithmWriteStarted = false;
+  const store = setup({
+    getSettings: async () => persisted,
+    saveAppearance: async (appearance) => {
+      await appearanceWrite.promise;
+      persisted = { ...persisted, appearance };
+      return persisted;
+    },
+    saveSettings: async (settings) => {
+      algorithmWriteStarted = true;
+      persisted = settings;
+      return persisted;
+    },
+  });
+  const changeTheme = store.getState().setAppearance("dark");
+  const saveDraft = store.getState().updateSettings({ ...defaultSettings, newCardsPerDay: 17 });
+  await Promise.resolve();
+  assert.equal(algorithmWriteStarted, false);
+  appearanceWrite.resolve(defaultSettings);
+  await Promise.all([changeTheme, saveDraft]);
+  assert.equal(persisted.appearance, "dark");
+  assert.equal(persisted.newCardsPerDay, 17);
+  assert.deepEqual(store.getState().settings, persisted);
+});
+
+test("failed appearance write keeps the theme and does not block a retry", async () => {
+  let fails = true;
+  const store = setup({ saveAppearance: async (appearance) => {
+    if (fails) throw new Error("write failed");
+    return { ...defaultSettings, appearance };
+  } });
+  await assert.rejects(store.getState().setAppearance("dark"), /write failed/);
+  assert.equal(store.getState().settings.appearance, "light");
+  fails = false;
+  await store.getState().setAppearance("dark");
+  assert.equal(store.getState().settings.appearance, "dark");
+});
+
+test("an older overview read cannot revert a newly saved appearance", async () => {
+  const oldSettings = deferred<typeof defaultSettings>();
+  const store = setup({ getSettings: async () => oldSettings.promise });
+  const refresh = store.getState().refresh();
+  await store.getState().setAppearance("dark");
+  oldSettings.resolve(defaultSettings);
+  await refresh;
+  assert.equal(store.getState().settings.appearance, "dark");
+  assert.equal(store.getState().ready, true);
+  assert.deepEqual(store.getState().overview, queue());
 });

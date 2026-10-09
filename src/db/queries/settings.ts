@@ -3,6 +3,7 @@ import type { SqliteRemoteDatabase } from "drizzle-orm/sqlite-proxy";
 import {
   defaultSettings,
   validateSettings,
+  type Appearance,
   type StudySettings,
 } from "../../lib/settings";
 import { appSettingsTable } from "../schemas/user/appSettings";
@@ -33,4 +34,13 @@ export async function writeSettings(
       set: { value: JSON.stringify(validated) },
     });
   return validated;
+}
+
+// Call inside a transaction so another settings write cannot lose this choice.
+export async function writeAppearance(
+  database: Pick<SqliteRemoteDatabase, "select" | "insert">,
+  appearance: Appearance,
+) {
+  const current = await readSettings(database);
+  return writeSettings(database, { ...current, appearance });
 }

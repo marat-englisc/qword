@@ -1,4 +1,7 @@
+export type Appearance = "light" | "dark";
+
 export const defaultSettings = {
+  appearance: "light" as Appearance,
   newCardsPerDay: 10,
   reviewsPerDay: 100,
   reviewsPerNewCard: 3,
@@ -34,6 +37,11 @@ export function validateSettings(value: unknown): StudySettings {
     throw new Error("Некорректные настройки обучения.");
   const input = value as Record<string, unknown>;
   const result = { ...defaultSettings };
+  // Older installations have no appearance field yet.
+  const appearance = input.appearance === undefined ? defaultSettings.appearance : input.appearance;
+  if (appearance !== "light" && appearance !== "dark")
+    throw new Error("Выберите светлую или тёмную тему.");
+  result.appearance = appearance;
   for (const key of Object.keys(settingLimits) as NumericSetting[]) {
     const number = input[key];
     const { min, max } = settingLimits[key];
