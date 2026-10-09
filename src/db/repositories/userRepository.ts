@@ -157,7 +157,6 @@ export async function getUserCardMeaningReviews(cardMeaningId: number) {
     );
 }
 
-// В таблице поля camelCase, а TS-FSRS ожидает snake_case.
 export function toFsrsCard(progress: UserCardMeaning): Card {
   return {
     due: progress.due,

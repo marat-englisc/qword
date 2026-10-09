@@ -7,7 +7,6 @@ import { cardMeaningTable } from "../schemas/card/cardMeaning";
 import { cardMeaningAttributeTable } from "../schemas/card/cardMeaningAttribute";
 import { deckTable } from "../schemas/card/deck";
 
-// Контент создаётся разработчиком. В приложении его только читаем.
 export async function getDecks() {
   return db.select().from(deckTable).orderBy(deckTable.id);
 }
@@ -22,7 +21,6 @@ export async function getDeck(deckId: number) {
   return deck;
 }
 
-// Без deckId возвращаем карточки из всех колод.
 export async function getCards(deckId?: number) {
   return db
     .select()

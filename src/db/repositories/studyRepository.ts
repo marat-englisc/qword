@@ -13,8 +13,6 @@ export type StudyCard = {
   progress: typeof userCardMeaningTable.$inferSelect | null;
 };
 
-// Только начатые карточки из добавленных пользователем колод.
-// Будущие сроки тоже нужны: считаем нагрузку и ближайшее повторение.
 export async function getScheduledStudyCards() {
   return db
     .select({
@@ -81,7 +79,6 @@ export async function getStudyCard(cardMeaningId: number) {
   return card;
 }
 
-// История общая для всех колод, чтобы переключение колоды не сбрасывало лимит.
 export async function getStudyReviewsToday(dayStart: Date, now: Date) {
   return db
     .select({

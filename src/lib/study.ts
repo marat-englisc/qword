@@ -13,7 +13,6 @@ import {
 import { scheduler } from "./scheduler";
 
 export const studySettings = {
-  // Лимит общий для всех колод. Считаем первые ответы, а не просмотры.
   newCardsPerDay: 10,
   reviewsPerNewCard: 3,
   maxDueReviewsForNew: 50,
@@ -22,14 +21,11 @@ export const studySettings = {
 
 export type StudyOptions = Partial<typeof studySettings> & { deckId?: number };
 
-// Одна учебная карточка — одно значение слова (meaning.id).
 export type StudyItem = StudyCard & {
   kind: "learning" | "review" | "new";
-  // Вероятность вспомнить ответ: 0–1. Для новых и обучения не рассчитываем.
   retrievability: number | null;
 };
 
-// Учебный день начинается в 04:00 по локальному времени устройства.
 export function getStudyDayStart(now = new Date()) {
   const start = new Date(now);
   start.setHours(4, 0, 0, 0);
@@ -37,8 +33,6 @@ export function getStudyDayStart(now = new Date()) {
   return start;
 }
 
-// Это снимок очереди: после ответа, наступления nextDue или newResetAt
-// нужно получить его заново. Без deckId занимаемся по всем добавленным колодам.
 export async function getStudyQueue(
   options: StudyOptions = {},
   now = new Date(),
@@ -50,7 +44,6 @@ export async function getStudyQueue(
     getStudyReviewsToday(dayStart, now),
   ]);
 
-  // В журнале FSRS state — состояние ДО ответа. New означает первый ответ.
   const introducedToday = new Set(
     history
       .filter((review) => review.state === State.New)
@@ -78,7 +71,6 @@ export async function getStudyQueue(
     const isLearning =
       progress.state === State.Learning || progress.state === State.Relearning;
 
-    // Нагрузка считается по всем добавленным колодам, включая будущие шаги.
     if (isLearning) learningTotal++;
     if (!isLearning && progress.due <= now) dueReviewsTotal++;
 
@@ -110,8 +102,7 @@ export async function getStudyQueue(
       a.progress!.due.getTime() - b.progress!.due.getTime() ||
       a.meaning.id - b.meaning.id,
   );
-  // FSRS учитывает время с последнего ответа и устойчивость памяти.
-  // Старый срок, ошибки и сложность разрешают равенство, а не заменяют модель.
+
   reviews.sort(
     (a, b) =>
       a.retrievability! - b.retrievability! ||
@@ -128,7 +119,6 @@ export async function getStudyQueue(
     ? []
     : await getNewStudyCards(newRemainingToday, options.deckId);
 
-  // Готовые шаги обучения всегда первые. Затем 3 повторения : 1 новая.
   const queue: StudyItem[] = [...learning];
   let reviewIndex = 0;
   let newIndex = 0;
@@ -166,7 +156,6 @@ export async function getStudyQueue(
   };
 }
 
-// Вызывать заново после ответа и возвращения в приложение: очередь меняется.
 export async function getNextStudyCard(
   options: StudyOptions = {},
   now = new Date(),
@@ -175,7 +164,6 @@ export async function getNextStudyCard(
   return { ...result, card: result.queue[0] ?? null };
 }
 
-// Прогноз для четырёх кнопок. Просмотр не создаёт прогресс и не тратит лимит.
 export function previewStudyCard(card: StudyCard, now = new Date()) {
   const progress = card.progress
     ? toFsrsCard(card.progress)
@@ -188,7 +176,6 @@ export async function answerStudyCard(
   rating: Grade,
   now = new Date(),
 ) {
-  // Читаем свежее состояние вместо прогресса из старого снимка очереди.
   const card = await getStudyCard(cardMeaningId);
   if (!card) throw new Error("Карточка не найдена в добавленных колодах.");
 
