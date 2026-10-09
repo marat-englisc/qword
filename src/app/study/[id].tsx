@@ -6,91 +6,113 @@ import {
   Appbar,
   Avatar,
   Button,
-  ProgressBar,
+  Chip,
   Snackbar,
   Text,
 } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { createEmptyCard, type Grade } from "ts-fsrs";
+import type { Grade } from "ts-fsrs";
 import WordCard from "@/components/WordCard";
-import { builtInDecks } from "@/content/decks";
-import { formatInterval, ratings, scheduler } from "@/lib/scheduler";
+import { formatInterval, ratings } from "@/lib/scheduler";
+import { previewStudyCard } from "@/lib/study";
 import { useAppStore } from "@/store";
 import { theme } from "@/theme";
-
-export function generateStaticParams() {
-  return [{ id: "all" }, ...builtInDecks.map((deck) => ({ id: deck.id }))];
-}
 
 export default function StudyScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const {
-    queue,
+    currentCard,
+    examples,
+    session,
     sessionId,
-    sessionTotal,
     answered,
     revealed,
     saving,
     decks,
-    now,
     startSession,
+    refreshSession,
     reveal,
     answer,
-    refresh,
   } = useAppStore();
-  const [error, setError] = useState(false);
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
-  const word = queue[0];
-  const deck = decks.find((item) => item.id === id);
-  const validDeck = id === "all" || !!deck;
-  const relevantDecks =
-    id === "all" ? decks : decks.filter((item) => item.id === id);
-  const nextDates = relevantDecks.flatMap((item) =>
-    item.nextDue === null ? [] : [item.nextDue],
-  );
-  const nextDue = nextDates.length ? Math.min(...nextDates) : null;
+  const [now, setNow] = useState(() => Date.now());
+  const deck = decks.find((item) => item.id === Number(id));
+  const validDeck = id === "all" || !!deck?.added;
 
   useFocusEffect(
     useCallback(() => {
-      setLoading(true);
       let active = true;
-      startSession(id)
+      setError("");
+      setLoading(true);
+      if (!validDeck) {
+        setLoading(false);
+        return;
+      }
+      void startSession(id)
         .catch(() => {
-          if (active) setError(true);
+          if (active)
+            setError("Не удалось загрузить практику. Попробуйте ещё раз.");
         })
         .finally(() => {
           if (active) setLoading(false);
         });
+
       const timer = setInterval(() => {
-        void refresh().catch(console.error);
-      }, 30_000);
+        const time = Date.now();
+        if (active) setNow(time);
+        const state = useAppStore.getState();
+        const wakeAt = Math.min(
+          state.session?.nextDue?.getTime() ?? Infinity,
+          state.session?.newResetAt.getTime() ?? Infinity,
+        );
+        if (!state.currentCard && !state.saving && time >= wakeAt) {
+          void refreshSession().catch(() => {
+            if (active) setError("Не удалось обновить очередь.");
+          });
+        }
+      }, 1000);
       return () => {
         active = false;
         clearInterval(timer);
       };
-    }, [id, startSession, refresh]),
+    }, [id, validDeck, startSession, refreshSession]),
   );
 
   function goBack() {
+    if (saving) return;
     if (router.canGoBack()) router.back();
     else router.replace("/");
   }
 
   async function rate(rating: Grade) {
     try {
+      setError("");
       await answer(rating);
     } catch {
-      setError(true);
+      setError(
+        "Не удалось сохранить ответ или загрузить следующее значение. Попробуйте ещё раз.",
+      );
     }
   }
 
-  // repeat нужен только для подсказок. Результат сохраняется после нажатия оценки.
-  const preview = word
-    ? scheduler.repeat(
-        word.card ?? createEmptyCard(new Date(now)),
-        new Date(now),
-      )
+  async function reload() {
+    setLoading(true);
+    setError("");
+    try {
+      if (sessionId === id && session) await refreshSession();
+      else await startSession(id);
+    } catch {
+      setError("Не удалось загрузить практику.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const preview = currentCard
+    ? previewStudyCard(currentCard, new Date(now))
     : null;
+  const nextDue = session?.nextDue;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.background }}>
@@ -102,56 +124,59 @@ export default function StudyScreen() {
           <Appbar.Action
             icon="close"
             onPress={goBack}
+            disabled={saving}
             accessibilityLabel="Завершить практику"
           />
           <Appbar.Content
-            title={id === "all" ? "Практика" : (deck?.title ?? "Практика")}
+            title={id === "all" ? "Практика" : (deck?.name ?? "Практика")}
             titleStyle={{ fontSize: 18 }}
           />
-          {!loading && word && (
-            <Text variant="labelLarge" style={{ marginRight: 24 }}>
-              {answered + 1} / {sessionTotal}
-            </Text>
-          )}
+          <Text variant="labelLarge" style={{ marginRight: 20 }}>
+            Ответов: {answered}
+          </Text>
         </Appbar.Header>
 
-        {loading || sessionId !== id ? (
+        {loading || (saving && !currentCard) ? (
           <View className="flex-1 items-center justify-center">
             <ActivityIndicator />
           </View>
-        ) : word && validDeck ? (
+        ) : currentCard && validDeck && sessionId === id ? (
           <>
-            <View className="px-6 pb-4">
-              <View style={{ height: 4 }}>
-                <ProgressBar
-                  progress={sessionTotal ? answered / sessionTotal : 0}
-                  color={theme.colors.primary}
-                  style={{
-                    height: 4,
-                    borderRadius: 4,
-                    backgroundColor: "#E7E3EF",
-                  }}
-                />
+            <View className="gap-3 px-6 pb-4">
+              <View className="flex-row flex-wrap gap-2">
+                <Chip compact>{session?.learningCount ?? 0} в обучении</Chip>
+                <Chip compact>{session?.reviewCount ?? 0} повторений</Chip>
+                <Chip compact>{session?.newCount ?? 0} новых</Chip>
               </View>
               <Text
                 variant="bodySmall"
-                style={{ marginTop: 14, color: theme.colors.onSurfaceVariant }}
+                style={{ color: theme.colors.onSurfaceVariant }}
               >
-                {word.card ? "Повторение" : "Новое слово"} ·{" "}
+                {currentCard.kind === "new"
+                  ? "Новое значение"
+                  : currentCard.kind === "learning"
+                    ? "Закрепление значения"
+                    : "Повторение значения"}
+                {" · "}
                 {revealed
-                  ? "Оцените, насколько легко вспомнили слово"
-                  : "Сначала вспомните перевод, затем откройте ответ"}
+                  ? "Оцените, насколько легко вспомнили это значение"
+                  : "Вспомните значение по подсказке и откройте ответ"}
               </Text>
             </View>
             <ScrollView
-              key={word.id}
+              key={currentCard.meaning.id}
               contentContainerStyle={{
                 paddingHorizontal: 24,
                 paddingBottom: 24,
                 flexGrow: 1,
               }}
             >
-              <WordCard key={word.id} word={word} revealed={revealed} />
+              <WordCard
+                key={currentCard.meaning.id}
+                card={currentCard}
+                examples={examples}
+                revealed={revealed}
+              />
             </ScrollView>
             <View
               className="gap-3 px-6 pb-4 pt-3"
@@ -169,7 +194,7 @@ export default function StudyScreen() {
                       textAlign: "center",
                     }}
                   >
-                    Когда повторить это слово
+                    Когда повторить это значение
                   </Text>
                   <View className="flex-row flex-wrap gap-2">
                     {ratings.map((rating) => (
@@ -224,11 +249,13 @@ export default function StudyScreen() {
                 variant="headlineMedium"
                 style={{ fontWeight: "700", textAlign: "center" }}
               >
-                {validDeck
-                  ? answered
-                    ? "Хорошая работа!"
-                    : "Пока всё пройдено"
-                  : "Колода не найдена"}
+                {!validDeck
+                  ? "Колода не добавлена"
+                  : !session
+                    ? "Не удалось загрузить практику"
+                    : answered
+                      ? "Хорошая работа!"
+                      : "Пока всё пройдено"}
               </Text>
               <Text
                 variant="bodyLarge"
@@ -238,10 +265,10 @@ export default function StudyScreen() {
                 }}
               >
                 {answered
-                  ? `Карточек за эту практику: ${answered}.`
-                  : "Сейчас нет доступных карточек."}
+                  ? `Ответов за эту практику: ${answered}.`
+                  : "Сейчас нет доступных значений."}
               </Text>
-              {nextDue !== null && validDeck && (
+              {nextDue && validDeck && (
                 <Text
                   variant="bodyMedium"
                   style={{
@@ -250,37 +277,54 @@ export default function StudyScreen() {
                   }}
                 >
                   Следующее повторение{" "}
-                  {nextDue <= now
+                  {nextDue.getTime() <= now
                     ? "уже доступно"
                     : `через ${formatInterval(nextDue, now)}`}
                   .
                 </Text>
               )}
-              <Button
-                mode="contained"
-                onPress={goBack}
-                contentStyle={{ minHeight: 48 }}
-              >
-                Вернуться к колоде
-              </Button>
-              {nextDue !== null && validDeck && (
-                <Button
-                  onPress={() => {
-                    void startSession(id).catch(() => setError(true));
+              {session?.newRemainingToday === 0 && (
+                <Text
+                  variant="bodyMedium"
+                  style={{
+                    textAlign: "center",
+                    color: theme.colors.onSurfaceVariant,
                   }}
                 >
-                  Проверить доступные карточки
+                  Дневной лимит новых значений достигнут. Он обновится в 04:00.
+                </Text>
+              )}
+              {session?.newBlocked && (
+                <Text
+                  variant="bodyMedium"
+                  style={{
+                    textAlign: "center",
+                    color: theme.colors.onSurfaceVariant,
+                  }}
+                >
+                  Новые значения пока приостановлены. Разберите повторения в
+                  добавленных колодах.
+                </Text>
+              )}
+              {validDeck && (
+                <Button
+                  mode="contained"
+                  onPress={() => void reload()}
+                  contentStyle={{ minHeight: 48 }}
+                >
+                  Проверить доступные значения
                 </Button>
               )}
+              <Button onPress={goBack}>Вернуться к колодам</Button>
             </View>
           </ScrollView>
         )}
         <Snackbar
-          visible={error}
-          onDismiss={() => setError(false)}
+          visible={!!error}
+          onDismiss={() => setError("")}
           duration={5000}
         >
-          Не удалось сохранить ответ. Попробуйте нажать оценку ещё раз.
+          {error}
         </Snackbar>
       </View>
     </SafeAreaView>

@@ -3,25 +3,31 @@ import { View } from "react-native";
 import { Card, Divider, IconButton, Snackbar, Text } from "react-native-paper";
 import * as Speech from "expo-speech";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
-import type { StudyWord } from "@/db/database";
+import type { StudyCard } from "@/db/repositories/studyRepository";
+import type { cardExampleTable } from "@/db/schemas/card/cardExample";
 import { theme } from "@/theme";
 
 export default function WordCard({
-  word,
+  card,
+  examples,
   revealed,
 }: {
-  word: StudyWord;
+  card: StudyCard;
+  examples: (typeof cardExampleTable.$inferSelect)[];
   revealed: boolean;
 }) {
+  const { word, meaning } = card;
+  const meaningExamples = examples.filter(
+    (example) => example.cardMeaningId === meaning.id,
+  );
   const [speaking, setSpeaking] = useState(false);
   const [speechError, setSpeechError] = useState(false);
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    return () => {
       void Speech.stop();
-    },
-    [],
-  );
+    };
+  }, [meaning.id]);
 
   async function speak() {
     try {
@@ -52,7 +58,7 @@ export default function WordCard({
         <Card.Content style={{ paddingVertical: 32, paddingHorizontal: 24 }}>
           <View
             className="items-center gap-3"
-            style={{ paddingVertical: revealed ? 4 : 52 }}
+            style={{ paddingVertical: revealed ? 4 : 32 }}
           >
             <Text
               variant="labelMedium"
@@ -67,22 +73,44 @@ export default function WordCard({
             >
               {word.title}
             </Text>
-            <Text
-              variant="titleMedium"
-              style={{ color: theme.colors.onSurfaceVariant }}
-              selectable
-            >
-              {word.ipa}
-            </Text>
-            <IconButton
-              icon={speaking ? "volume-high" : "volume-medium"}
-              mode="contained"
-              containerColor={theme.colors.primaryContainer}
-              iconColor={theme.colors.primary}
-              size={26}
-              onPress={speak}
-              accessibilityLabel={`Произнести ${word.title}`}
-            />
+            {!!word.transcription && (
+              <Text
+                variant="titleMedium"
+                style={{ color: theme.colors.onSurfaceVariant }}
+                selectable
+              >
+                {word.transcription}
+              </Text>
+            )}
+            {!revealed && (
+              <>
+                <IconButton
+                  icon={speaking ? "volume-high" : "volume-medium"}
+                  mode="contained"
+                  containerColor={theme.colors.primaryContainer}
+                  iconColor={theme.colors.primary}
+                  size={26}
+                  onPress={() => void speak()}
+                  accessibilityLabel={`Произнести ${word.title}`}
+                />
+                {!!meaning.hint && (
+                  <View
+                    className="mt-4 w-full gap-2 rounded-2xl p-4"
+                    style={{ backgroundColor: theme.colors.surfaceVariant }}
+                  >
+                    <Text
+                      variant="labelMedium"
+                      style={{ color: theme.colors.onSurfaceVariant }}
+                    >
+                      Подсказка
+                    </Text>
+                    <Text variant="bodyLarge" selectable>
+                      {meaning.hint}
+                    </Text>
+                  </View>
+                )}
+              </>
+            )}
           </View>
 
           {revealed && (
@@ -90,34 +118,17 @@ export default function WordCard({
               <Divider style={{ marginVertical: 24 }} />
               <View className="gap-3">
                 <Text variant="bodyLarge" selectable>
-                  {word.definitionEn}
+                  {meaning.meaning}
                 </Text>
                 <Text
                   variant="bodyLarge"
                   style={{ color: theme.colors.primary }}
                   selectable
                 >
-                  {word.definitionRu}
+                  {meaning.meaningTranslation}
                 </Text>
               </View>
-              {word.attributes.length > 0 && (
-                <View className="mt-6 gap-3">
-                  {word.attributes.map((attribute) => (
-                    <View key={attribute.id} className="gap-1">
-                      <Text
-                        variant="labelMedium"
-                        style={{ color: theme.colors.onSurfaceVariant }}
-                      >
-                        {attribute.label}
-                      </Text>
-                      <Text variant="bodyMedium" selectable>
-                        {attribute.value}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-              )}
-              {word.examples.length > 0 && (
+              {meaningExamples.length > 0 && (
                 <View className="mt-6 gap-3">
                   <Text
                     variant="labelMedium"
@@ -126,23 +137,23 @@ export default function WordCard({
                       letterSpacing: 1,
                     }}
                   >
-                    В КОНТЕКСТЕ
+                    ПРИМЕРЫ
                   </Text>
-                  {word.examples.map((example) => (
+                  {meaningExamples.map((example) => (
                     <View
                       key={example.id}
                       className="gap-2 rounded-2xl p-4"
-                      style={{ backgroundColor: "#F8F7F3" }}
+                      style={{ backgroundColor: theme.colors.background }}
                     >
                       <Text variant="bodyMedium" selectable>
-                        {example.textEn}
+                        {example.example}
                       </Text>
                       <Text
                         variant="bodyMedium"
                         style={{ color: theme.colors.onSurfaceVariant }}
                         selectable
                       >
-                        {example.textRu}
+                        {example.exampleTranslation}
                       </Text>
                     </View>
                   ))}

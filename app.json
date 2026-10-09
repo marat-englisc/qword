@@ -21,7 +21,7 @@
     "web": {
       "favicon": "./assets/favicon.png",
       "bundler": "metro",
-      "output": "static"
+      "output": "single"
     },
     "plugins": [
       [
@@ -34,7 +34,8 @@
         }
       ],
       "expo-sqlite",
-      "expo-font"
+      "expo-font",
+      "expo-asset"
     ],
     "scheme": "qword"
   }

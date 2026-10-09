@@ -1,7 +1,8 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { FlatList, ScrollView, View } from "react-native";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import {
+  ActivityIndicator,
   Appbar,
   Avatar,
   Button,
@@ -11,60 +12,121 @@ import {
   IconButton,
   Portal,
   Searchbar,
+  Snackbar,
   Text,
   TouchableRipple,
 } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { State } from "ts-fsrs";
 import WordCard from "@/components/WordCard";
-import { builtInDecks } from "@/content/decks";
-import { getDeckWords, type StudyWord } from "@/db/database";
+import {
+  getCardExamples,
+  getDeckMeanings,
+} from "@/db/repositories/cardRepository";
+import type { StudyCard } from "@/db/repositories/studyRepository";
 import { formatInterval } from "@/lib/scheduler";
+import { getStudyQueue } from "@/lib/study";
 import { useAppStore } from "@/store";
 import { theme } from "@/theme";
 
-export function generateStaticParams() {
-  return builtInDecks.map((deck) => ({ id: deck.id }));
-}
-
 export default function DeckScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const deckId = Number(id);
   const decks = useAppStore((state) => state.decks);
   const refresh = useAppStore((state) => state.refresh);
+  const addDeck = useAppStore((state) => state.addDeck);
   const now = useAppStore((state) => state.now);
-  const [words, setWords] = useState<StudyWord[]>([]);
+  const [meanings, setMeanings] = useState<StudyCard[]>([]);
+  const [study, setStudy] = useState<Awaited<
+    ReturnType<typeof getStudyQueue>
+  > | null>(null);
   const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState<StudyWord | null>(null);
-  const deck = decks.find((item) => item.id === id);
+  const [selected, setSelected] = useState<StudyCard | null>(null);
+  const [examples, setExamples] = useState<
+    Awaited<ReturnType<typeof getCardExamples>>
+  >([]);
+  const [loading, setLoading] = useState(true);
+  const [adding, setAdding] = useState(false);
+  const [error, setError] = useState("");
+  const deck = decks.find((item) => item.id === deckId);
 
   useFocusEffect(
     useCallback(() => {
       let active = true;
       const update = async () => {
+        if (!Number.isInteger(deckId) || deckId <= 0) {
+          if (active) setLoading(false);
+          return;
+        }
         await refresh();
-        const loaded = await getDeckWords(id);
-        if (active) setWords(loaded);
+        const [rows, queue] = await Promise.all([
+          getDeckMeanings(deckId),
+          getStudyQueue({ deckId }),
+        ]);
+        if (active) {
+          setMeanings(rows);
+          setStudy(queue);
+          setLoading(false);
+        }
       };
-      void update().catch(console.error);
-      const timer = setInterval(() => {
-        void update().catch(console.error);
-      }, 30_000);
+      void update().catch(() => {
+        if (active) {
+          setError("Не удалось загрузить колоду.");
+          setLoading(false);
+        }
+      });
+      const timer = setInterval(
+        () => void update().catch(console.error),
+        30_000,
+      );
       return () => {
         active = false;
         clearInterval(timer);
       };
-    }, [id, refresh]),
+    }, [deckId, refresh]),
   );
+
+  useEffect(() => {
+    let active = true;
+    if (selected) {
+      void getCardExamples(selected.meaning.id)
+        .then((rows) => {
+          if (active) setExamples(rows);
+        })
+        .catch(() => {
+          if (active) setError("Не удалось загрузить примеры.");
+        });
+    }
+    return () => {
+      active = false;
+    };
+  }, [selected]);
 
   function goBack() {
     if (router.canGoBack()) router.back();
     else router.replace("/");
   }
 
-  const available = deck ? deck.newCount + deck.reviewCount : 0;
+  async function addToStudy() {
+    if (adding) return;
+    setAdding(true);
+    try {
+      await addDeck(deckId);
+      setStudy(await getStudyQueue({ deckId }));
+    } catch {
+      setError("Не удалось добавить колоду.");
+    } finally {
+      setAdding(false);
+    }
+  }
+
   const query = search.trim().toLowerCase();
-  const filtered = words.filter((word) =>
-    `${word.title} ${word.definitionRu}`.toLowerCase().includes(query),
+  const filtered = meanings.filter(({ word, meaning }) =>
+    `${word.title} ${meaning.hint ?? ""} ${meaning.meaningTranslation}`
+      .toLowerCase()
+      .includes(query),
   );
+  const available = study?.queue.length ?? 0;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.background }}>
@@ -74,77 +136,110 @@ export default function DeckScreen() {
           style={{ backgroundColor: theme.colors.background }}
         >
           <Appbar.BackAction onPress={goBack} />
-          <Appbar.Content title="Колода" titleStyle={{ fontSize: 18 }} />
+          <Appbar.Content
+            title={deck?.name ?? "Колода"}
+            titleStyle={{ fontSize: 18 }}
+          />
         </Appbar.Header>
-        {deck ? (
+        {loading ? (
+          <View className="flex-1 items-center justify-center">
+            <ActivityIndicator />
+          </View>
+        ) : deck ? (
           <FlatList
             data={filtered}
-            keyExtractor={(word) => word.id}
+            keyExtractor={(item) => String(item.meaning.id)}
             contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 24 }}
             keyboardShouldPersistTaps="handled"
             ListHeaderComponent={
               <View className="gap-4 pb-3 pt-2">
                 <Avatar.Icon
-                  icon={deck.icon}
+                  icon="cards-outline"
                   size={64}
-                  color={theme.colors.onSurface}
-                  style={{ backgroundColor: deck.color, borderRadius: 20 }}
+                  color={theme.colors.primary}
+                  style={{
+                    backgroundColor: theme.colors.primaryContainer,
+                    borderRadius: 20,
+                  }}
                 />
                 <Text variant="headlineLarge" style={{ fontWeight: "700" }}>
-                  {deck.title}
+                  {deck.name}
                 </Text>
                 <Text
                   variant="bodyLarge"
                   style={{ color: theme.colors.onSurfaceVariant }}
                 >
-                  {deck.description}
+                  Слов: {deck.wordCount} · значений: {deck.meaningCount}
                 </Text>
                 <Text
-                  variant="labelLarge"
-                  style={{ color: theme.colors.secondary }}
+                  variant="bodyMedium"
+                  style={{ color: theme.colors.onSurfaceVariant }}
                 >
-                  {deck.level} · {deck.total} слов · {deck.reviewCount} к
-                  повторению
+                  Каждое значение изучается отдельно. Нажмите на строку, чтобы
+                  посмотреть его определение и примеры.
                 </Text>
-                <Button
-                  mode="contained"
-                  icon="cards-outline"
-                  disabled={!available}
-                  contentStyle={{ minHeight: 48 }}
-                  onPress={() => router.push(`/study/${id}`)}
-                >
-                  {available ? `Учить · ${available}` : "Карточки пройдены"}
-                </Button>
-                {!available && deck.nextDue && (
+                {deck.added ? (
+                  <Button
+                    mode="contained"
+                    icon="cards-outline"
+                    disabled={!available}
+                    contentStyle={{ minHeight: 48 }}
+                    onPress={() => router.push(`/study/${deckId}`)}
+                  >
+                    {available
+                      ? `Учить · ${available}`
+                      : "Пока нет доступных значений"}
+                  </Button>
+                ) : (
+                  <Button
+                    mode="contained"
+                    icon="plus"
+                    loading={adding}
+                    disabled={adding || !deck.meaningCount}
+                    contentStyle={{ minHeight: 48 }}
+                    onPress={() => void addToStudy()}
+                  >
+                    Добавить к изучению
+                  </Button>
+                )}
+                {deck.added && !available && study?.nextDue && (
                   <Text
                     variant="bodyMedium"
-                    style={{
-                      color: theme.colors.onSurfaceVariant,
-                      textAlign: "center",
-                    }}
+                    style={{ color: theme.colors.onSurfaceVariant }}
                   >
                     Следующее повторение через{" "}
-                    {formatInterval(deck.nextDue, now)}
+                    {formatInterval(study.nextDue, now)}.
                   </Text>
                 )}
-                <View className="mt-4 gap-3">
-                  <Text variant="titleMedium" style={{ fontWeight: "700" }}>
-                    Слова в колоде
-                  </Text>
-                  <Searchbar
-                    placeholder="Найти слово"
-                    value={search}
-                    onChangeText={setSearch}
-                    style={{ backgroundColor: "#F0EEE8" }}
-                    inputStyle={{ minHeight: 48 }}
-                  />
+                {deck.added && study?.newBlocked && (
                   <Text
                     variant="bodySmall"
                     style={{ color: theme.colors.onSurfaceVariant }}
                   >
-                    Нажмите на слово, чтобы посмотреть карточку.
+                    Сначала разберите текущие повторения и значения в обучении.
                   </Text>
-                </View>
+                )}
+                {deck.added && study?.newRemainingToday === 0 && (
+                  <Text
+                    variant="bodySmall"
+                    style={{ color: theme.colors.onSurfaceVariant }}
+                  >
+                    Дневной лимит новых значений достигнут. Он обновится в
+                    04:00.
+                  </Text>
+                )}
+                <Text
+                  variant="titleMedium"
+                  style={{ fontWeight: "700", marginTop: 16 }}
+                >
+                  Значения в колоде
+                </Text>
+                <Searchbar
+                  placeholder="Найти слово или значение"
+                  value={search}
+                  onChangeText={setSearch}
+                  style={{ backgroundColor: theme.colors.surfaceVariant }}
+                />
               </View>
             }
             ItemSeparatorComponent={() => <Divider />}
@@ -158,41 +253,61 @@ export default function DeckScreen() {
                 Ничего не найдено.
               </Text>
             }
-            renderItem={({ item }) => (
-              <TouchableRipple
-                onPress={() => setSelected(item)}
-                accessibilityLabel={`Посмотреть слово ${item.title}`}
-              >
-                <View className="flex-row items-center gap-3 py-4">
-                  <View className="flex-1 gap-1">
-                    <Text variant="titleMedium" style={{ fontWeight: "600" }}>
-                      {item.title}
-                    </Text>
+            renderItem={({ item }) => {
+              const studied =
+                item.progress && item.progress.state !== State.New;
+              return (
+                <TouchableRipple
+                  onPress={() => {
+                    setExamples([]);
+                    setSelected(item);
+                  }}
+                  accessibilityLabel={`Посмотреть значение ${item.word.title}: ${item.meaning.meaningTranslation}`}
+                >
+                  <View className="flex-row items-center gap-3 py-4">
+                    <View className="flex-1 gap-1">
+                      <Text variant="titleMedium" style={{ fontWeight: "600" }}>
+                        {item.word.title}
+                      </Text>
+                      {!!item.word.transcription && (
+                        <Text
+                          variant="bodySmall"
+                          style={{ color: theme.colors.onSurfaceVariant }}
+                        >
+                          {item.word.transcription}
+                        </Text>
+                      )}
+                      {!!item.meaning.hint && (
+                        <Text
+                          variant="bodySmall"
+                          style={{ color: theme.colors.onSurfaceVariant }}
+                        >
+                          {item.meaning.hint}
+                        </Text>
+                      )}
+                      <Text variant="bodyMedium">
+                        {item.meaning.meaningTranslation}
+                      </Text>
+                    </View>
                     <Text
-                      variant="bodySmall"
-                      style={{ color: theme.colors.onSurfaceVariant }}
+                      variant="labelSmall"
+                      style={{
+                        color: studied
+                          ? theme.colors.secondary
+                          : theme.colors.primary,
+                      }}
                     >
-                      {item.ipa}
+                      {studied ? "Знакомое" : "Новое"}
                     </Text>
+                    <Icon
+                      source="chevron-right"
+                      size={20}
+                      color={theme.colors.onSurfaceVariant}
+                    />
                   </View>
-                  <Text
-                    variant="labelSmall"
-                    style={{
-                      color: item.card
-                        ? theme.colors.secondary
-                        : theme.colors.primary,
-                    }}
-                  >
-                    {item.card ? "Знакомое" : "Новое"}
-                  </Text>
-                  <Icon
-                    source="chevron-right"
-                    size={20}
-                    color={theme.colors.onSurfaceVariant}
-                  />
-                </View>
-              </TouchableRipple>
-            )}
+                </TouchableRipple>
+              );
+            }}
           />
         ) : (
           <View className="flex-1 items-center justify-center gap-4 px-6">
@@ -214,11 +329,11 @@ export default function DeckScreen() {
           }}
         >
           <View className="flex-row items-center justify-between px-4">
-            <Text variant="titleMedium">Карточка слова</Text>
+            <Text variant="titleMedium">Значение слова</Text>
             <IconButton
               icon="close"
               onPress={() => setSelected(null)}
-              accessibilityLabel="Закрыть карточку"
+              accessibilityLabel="Закрыть значение"
             />
           </View>
           <Dialog.ScrollArea
@@ -230,7 +345,12 @@ export default function DeckScreen() {
           >
             <ScrollView>
               {selected && (
-                <WordCard key={selected.id} word={selected} revealed />
+                <WordCard
+                  key={selected.meaning.id}
+                  card={selected}
+                  examples={examples}
+                  revealed
+                />
               )}
             </ScrollView>
           </Dialog.ScrollArea>
@@ -239,6 +359,9 @@ export default function DeckScreen() {
           </Dialog.Actions>
         </Dialog>
       </Portal>
+      <Snackbar visible={!!error} onDismiss={() => setError("")}>
+        {error}
+      </Snackbar>
     </SafeAreaView>
   );
 }

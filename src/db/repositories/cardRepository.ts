@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { State } from "ts-fsrs";
 import { db } from "@/config/connection";
 import { attributeTable } from "../schemas/card/attribute";
 import { cardTable } from "../schemas/card/card";
@@ -6,6 +7,85 @@ import { cardExampleTable } from "../schemas/card/cardExample";
 import { cardMeaningTable } from "../schemas/card/cardMeaning";
 import { cardMeaningAttributeTable } from "../schemas/card/cardMeaningAttribute";
 import { deckTable } from "../schemas/card/deck";
+import { userCardMeaningTable } from "../schemas/user/userCardMeaning";
+import { userDeckTable } from "../schemas/user/userDeck";
+
+export type DeckSummary = {
+  id: number;
+  name: string;
+  added: boolean;
+  wordCount: number;
+  meaningCount: number;
+  studiedMeaningCount: number;
+  newMeaningCount: number;
+  reviewCount: number;
+  nextDue: Date | null;
+};
+
+export async function getDeckSummaries(
+  now = new Date(),
+): Promise<DeckSummary[]> {
+  const [decks, userDecks, rows] = await Promise.all([
+    getDecks(),
+    db.select().from(userDeckTable),
+    db
+      .select({
+        deckId: cardTable.deckId,
+        cardId: cardTable.id,
+        meaningId: cardMeaningTable.id,
+        state: userCardMeaningTable.state,
+        due: userCardMeaningTable.due,
+      })
+      .from(cardTable)
+      .leftJoin(cardMeaningTable, eq(cardMeaningTable.cardId, cardTable.id))
+      .leftJoin(
+        userCardMeaningTable,
+        eq(userCardMeaningTable.cardMeaningId, cardMeaningTable.id),
+      ),
+  ]);
+
+  return decks.map((deck) => {
+    const words = rows.filter((row) => row.deckId === deck.id);
+    const meanings = words.filter((row) => row.meaningId !== null);
+    const studied = meanings.filter(
+      (row) => row.state !== null && row.state !== State.New,
+    );
+    const future = studied
+      .filter((row) => row.due && row.due > now)
+      .map((row) => row.due!);
+    return {
+      id: deck.id,
+      name: deck.name,
+      added: userDecks.some((row) => row.deckId === deck.id),
+      wordCount: new Set(words.map((row) => row.cardId)).size,
+      meaningCount: meanings.length,
+      studiedMeaningCount: studied.length,
+      newMeaningCount: meanings.length - studied.length,
+      reviewCount: studied.filter((row) => row.due && row.due <= now).length,
+      nextDue: future.length
+        ? new Date(Math.min(...future.map((due) => due.getTime())))
+        : null,
+    };
+  });
+}
+
+// Каждая строка содержит слово и ровно одно его значение.
+export async function getDeckMeanings(deckId: number) {
+  return db
+    .select({
+      word: cardTable,
+      meaning: cardMeaningTable,
+      progress: userCardMeaningTable,
+    })
+    .from(cardMeaningTable)
+    .innerJoin(cardTable, eq(cardTable.id, cardMeaningTable.cardId))
+    .leftJoin(
+      userCardMeaningTable,
+      eq(userCardMeaningTable.cardMeaningId, cardMeaningTable.id),
+    )
+    .where(eq(cardTable.deckId, deckId))
+    .orderBy(cardTable.id, cardMeaningTable.id);
+}
 
 export async function getDecks() {
   return db.select().from(deckTable).orderBy(deckTable.id);

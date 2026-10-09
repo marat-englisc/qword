@@ -16,21 +16,23 @@ import { theme } from "@/theme";
 
 export default function DecksScreen() {
   const decks = useAppStore((state) => state.decks);
+  const overview = useAppStore((state) => state.overview);
   const refresh = useAppStore((state) => state.refresh);
 
   useFocusEffect(
     useCallback(() => {
       void refresh().catch(console.error);
-      const timer = setInterval(() => {
-        void refresh().catch(console.error);
-      }, 30_000);
+      const timer = setInterval(
+        () => void refresh().catch(console.error),
+        30_000,
+      );
       return () => clearInterval(timer);
     }, [refresh]),
   );
 
-  const newCount = decks.reduce((sum, deck) => sum + deck.newCount, 0);
-  const reviewCount = decks.reduce((sum, deck) => sum + deck.reviewCount, 0);
-  const available = newCount + reviewCount;
+  const reviews = (overview?.reviewCount ?? 0) + (overview?.learningCount ?? 0);
+  const newCount = overview?.newCount ?? 0;
+  const available = reviews + newCount;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.background }}>
@@ -44,17 +46,13 @@ export default function DecksScreen() {
                 style={{ backgroundColor: theme.colors.primaryContainer }}
                 color={theme.colors.primary}
               />
-              <Text
-                variant="headlineSmall"
-                style={{ fontWeight: "800", letterSpacing: -1 }}
-              >
+              <Text variant="headlineSmall" style={{ fontWeight: "800" }}>
                 qword
               </Text>
             </View>
             <Chip
               compact
-              textStyle={{ fontSize: 12 }}
-              style={{ backgroundColor: "#E8EEE8" }}
+              style={{ backgroundColor: theme.colors.secondaryContainer }}
             >
               EN → RU
             </Chip>
@@ -64,7 +62,7 @@ export default function DecksScreen() {
             variant="headlineLarge"
             style={{ fontWeight: "700", lineHeight: 40 }}
           >
-            Английский,{"\n"}слово за словом.
+            Английский,{"\n"}значение за значением.
           </Text>
           <Text
             variant="bodyLarge"
@@ -74,7 +72,8 @@ export default function DecksScreen() {
               marginBottom: 28,
             }}
           >
-            Несколько минут сегодня.{"\n"}Больше знакомых слов завтра.
+            Одно слово может значить разное.{"\n"}Изучайте каждое значение
+            отдельно.
           </Text>
 
           <Card
@@ -85,64 +84,41 @@ export default function DecksScreen() {
             }}
           >
             <Card.Content style={{ padding: 24 }}>
-              <View className="flex-row items-center justify-between">
-                <Text
-                  variant="labelLarge"
-                  style={{ color: theme.colors.primary, letterSpacing: 1 }}
-                >
-                  ВАША ПРАКТИКА
-                </Text>
-                <Icon
-                  source={available ? "creation" : "check-circle-outline"}
-                  size={24}
-                  color={theme.colors.primary}
-                />
-              </View>
               <Text
-                variant="headlineMedium"
-                style={{
-                  fontWeight: "700",
-                  color: theme.colors.onPrimaryContainer,
-                  marginTop: 18,
-                }}
+                variant="labelLarge"
+                style={{ color: theme.colors.primary, letterSpacing: 1 }}
               >
-                {available ? "Время для новых слов" : "Можно сделать паузу"}
+                ВАША ПРАКТИКА
+              </Text>
+              <Text
+                variant="headlineSmall"
+                style={{ fontWeight: "700", marginTop: 16 }}
+              >
+                {available ? "Время для практики" : "Можно сделать паузу"}
               </Text>
               <View className="my-5 flex-row gap-8">
                 <View className="gap-1">
-                  <Text
-                    variant="headlineLarge"
-                    style={{
-                      fontWeight: "700",
-                      color: theme.colors.onPrimaryContainer,
-                    }}
-                  >
-                    {reviewCount}
+                  <Text variant="headlineLarge" style={{ fontWeight: "700" }}>
+                    {reviews}
                   </Text>
                   <Text style={{ color: theme.colors.primary }}>
                     к повторению
                   </Text>
                 </View>
                 <View className="gap-1">
-                  <Text
-                    variant="headlineLarge"
-                    style={{
-                      fontWeight: "700",
-                      color: theme.colors.onPrimaryContainer,
-                    }}
-                  >
+                  <Text variant="headlineLarge" style={{ fontWeight: "700" }}>
                     {newCount}
                   </Text>
                   <Text style={{ color: theme.colors.primary }}>
-                    новых слов
+                    новых значений
                   </Text>
                 </View>
               </View>
-              {available > 0 ? (
+              {available ? (
                 <Button
                   mode="contained"
                   icon="arrow-right"
-                  contentStyle={{ flexDirection: "row-reverse", minHeight: 48 }}
+                  contentStyle={{ minHeight: 48 }}
                   onPress={() => router.push("/study/all")}
                 >
                   Начать практику
@@ -152,8 +128,18 @@ export default function DecksScreen() {
                   variant="bodyMedium"
                   style={{ color: theme.colors.primary }}
                 >
-                  Все доступные карточки пройдены. Возвращайтесь к следующему
-                  повторению.
+                  {decks.some((deck) => deck.added)
+                    ? "Сейчас нет доступных значений. Вернитесь к следующему повторению."
+                    : "Выберите колоду и добавьте её к изучению."}
+                </Text>
+              )}
+              {overview?.newBlocked && (
+                <Text
+                  variant="bodySmall"
+                  style={{ color: theme.colors.primary, marginTop: 12 }}
+                >
+                  Новые значения появятся, когда станет меньше повторений и
+                  карточек в обучении.
                 </Text>
               )}
             </Card.Content>
@@ -163,15 +149,16 @@ export default function DecksScreen() {
             <Text variant="titleLarge" style={{ fontWeight: "700" }}>
               Колоды
             </Text>
-            <Text
-              variant="labelLarge"
-              style={{ color: theme.colors.onSurfaceVariant }}
-            >
+            <Text style={{ color: theme.colors.onSurfaceVariant }}>
               {decks.length}
             </Text>
           </View>
-
           <View className="gap-3">
+            {!decks.length && (
+              <Text style={{ color: theme.colors.onSurfaceVariant }}>
+                Пока нет колод.
+              </Text>
+            )}
             {decks.map((deck) => (
               <Card
                 key={deck.id}
@@ -181,25 +168,28 @@ export default function DecksScreen() {
                   backgroundColor: theme.colors.surface,
                   borderRadius: 20,
                 }}
-                accessibilityLabel={`Открыть колоду ${deck.title}`}
+                accessibilityLabel={`Открыть колоду ${deck.name}`}
               >
                 <Card.Content style={{ paddingVertical: 20 }}>
                   <View className="flex-row items-center gap-4">
                     <Avatar.Icon
-                      icon={deck.icon}
+                      icon="cards-outline"
                       size={52}
-                      color={theme.colors.onSurface}
-                      style={{ backgroundColor: deck.color, borderRadius: 16 }}
+                      color={theme.colors.primary}
+                      style={{
+                        backgroundColor: theme.colors.primaryContainer,
+                        borderRadius: 16,
+                      }}
                     />
                     <View className="flex-1 gap-1">
                       <Text variant="titleMedium" style={{ fontWeight: "700" }}>
-                        {deck.title}
+                        {deck.name}
                       </Text>
                       <Text
                         variant="bodySmall"
                         style={{ color: theme.colors.onSurfaceVariant }}
                       >
-                        {deck.level} · {deck.total} слов
+                        Слов: {deck.wordCount} · значений: {deck.meaningCount}
                       </Text>
                     </View>
                     <Icon
@@ -208,59 +198,40 @@ export default function DecksScreen() {
                       color={theme.colors.onSurfaceVariant}
                     />
                   </View>
-                  <Text
-                    variant="bodyMedium"
+                  <ProgressBar
+                    progress={
+                      deck.meaningCount
+                        ? deck.studiedMeaningCount / deck.meaningCount
+                        : 0
+                    }
+                    color={theme.colors.secondary}
                     style={{
-                      color: theme.colors.onSurfaceVariant,
-                      marginTop: 16,
-                      marginBottom: 16,
+                      marginTop: 20,
+                      height: 4,
+                      borderRadius: 4,
+                      backgroundColor: theme.colors.surfaceVariant,
                     }}
-                  >
-                    {deck.description}
-                  </Text>
-                  <View style={{ height: 4 }}>
-                    <ProgressBar
-                      progress={
-                        deck.total
-                          ? (deck.total - deck.newCount) / deck.total
-                          : 0
-                      }
-                      color={theme.colors.secondary}
-                      style={{
-                        height: 4,
-                        borderRadius: 4,
-                        backgroundColor: "#EEEEE8",
-                      }}
-                    />
-                  </View>
-                  <View className="mt-3 flex-row justify-between gap-2">
+                  />
+                  <View className="mt-3 gap-1">
                     <Text
                       variant="bodySmall"
                       style={{ color: theme.colors.onSurfaceVariant }}
                     >
-                      Знакомы {deck.total - deck.newCount} из {deck.total}
+                      Знакомы {deck.studiedMeaningCount} из {deck.meaningCount}{" "}
+                      значений
                     </Text>
                     <Text
                       variant="labelSmall"
                       style={{ color: theme.colors.primary }}
                     >
-                      {deck.newCount + deck.reviewCount
-                        ? `${deck.newCount + deck.reviewCount} к изучению`
-                        : "Всё пройдено"}
+                      {deck.added
+                        ? `${deck.reviewCount} к повторению · ${deck.newMeaningCount} ещё не изучено`
+                        : "Не добавлена к изучению"}
                     </Text>
                   </View>
                 </Card.Content>
               </Card>
             ))}
-          </View>
-          <View className="mt-7 flex-row items-center justify-center gap-2">
-            <Icon source="leaf" size={16} color={theme.colors.secondary} />
-            <Text
-              variant="bodySmall"
-              style={{ color: theme.colors.onSurfaceVariant }}
-            >
-              В своём темпе. Каждый день понемногу.
-            </Text>
           </View>
         </View>
       </ScrollView>
