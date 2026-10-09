@@ -1,4 +1,22 @@
-import { fsrs, Rating, type Grade } from "ts-fsrs";
+import { fsrs, Rating, type Card, type Grade } from "ts-fsrs";
+import type { userCardMeaningTable } from "@/db/schemas/user/userCardMeaning";
+
+export function toFsrsCard(
+  progress: typeof userCardMeaningTable.$inferSelect,
+): Card {
+  return {
+    due: progress.due,
+    stability: progress.stability,
+    difficulty: progress.difficulty,
+    elapsed_days: progress.elapsedDays,
+    scheduled_days: progress.scheduledDays,
+    learning_steps: progress.learningSteps,
+    reps: progress.reps,
+    lapses: progress.lapses,
+    state: progress.state,
+    last_review: progress.lastReview ?? undefined,
+  };
+}
 
 export const scheduler = fsrs({
   request_retention: 0.9,

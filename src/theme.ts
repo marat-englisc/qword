@@ -16,7 +16,7 @@ export const theme = {
     surface: "#FFFFFF",
     surfaceVariant: "#F0EDE6",
     onSurface: "#252A29",
-    onSurfaceVariant: "#6E736F",
+    onSurfaceVariant: "#656B67",
     outline: "#AAA9A1",
     outlineVariant: "#E6E5DE",
     elevation: {

@@ -1,13 +1,13 @@
-import { drizzle } from "drizzle-orm/sqlite-proxy";
 import { Asset } from "expo-asset";
 import { File } from "expo-file-system";
 import { deserializeDatabaseAsync, type SQLiteDatabase } from "expo-sqlite";
 import { Platform } from "react-native";
 import { importContent } from "@/db/importContent";
+import { migrateUserData } from "@/db/migrateUserData";
+import { createSQLiteClient } from "./sqliteAdapter";
 
 let sqlite: SQLiteDatabase;
 
-// SQLiteProvider вызывает это до появления экранов.
 export async function initializeDatabase(database: SQLiteDatabase) {
   await database.execAsync(
     `PRAGMA foreign_keys = ON;
@@ -16,10 +16,11 @@ export async function initializeDatabase(database: SQLiteDatabase) {
   );
 
   const asset = Asset.fromModule(require("../../local.db"));
+  const contentVersion = asset.hash ?? asset.uri;
   const saved = await database.getFirstAsync<{ hash: string }>(
     "SELECT hash FROM content_import WHERE id = 1",
   );
-  if (!asset.hash || saved?.hash !== asset.hash) {
+  if (saved?.hash !== contentVersion) {
     await asset.downloadAsync();
     let bytes: Uint8Array;
     if (Platform.OS === "web") {
@@ -33,27 +34,16 @@ export async function initializeDatabase(database: SQLiteDatabase) {
 
     const source = await deserializeDatabaseAsync(bytes);
     try {
-      await importContent(database, source, asset.hash ?? asset.uri);
+      await importContent(database, source, contentVersion);
     } finally {
       await source.closeAsync();
     }
   }
+  await migrateUserData(database);
   sqlite = database;
 }
 
-// Все запросы идут в локальный Expo SQLite через его асинхронный API.
-export const db = drizzle(async (sql, params, method) => {
+export const { db, runDatabaseTransaction } = createSQLiteClient(() => {
   if (!sqlite) throw new Error("Локальная база ещё не открыта.");
-  if (method === "run") {
-    await sqlite.runAsync(sql, params);
-    return { rows: [] };
-  }
-  const statement = await sqlite.prepareAsync(sql);
-  try {
-    const result = await statement.executeForRawResultAsync(params);
-    const rows = await result.getAllAsync();
-    return { rows: method === "get" ? rows[0] : rows };
-  } finally {
-    await statement.finalizeAsync();
-  }
+  return sqlite;
 });

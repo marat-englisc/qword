@@ -1,14 +1,14 @@
 import { desc, eq } from "drizzle-orm";
-import { createEmptyCard, type Card, type RecordLogItem } from "ts-fsrs";
-import { db } from "@/config/connection";
+import { createEmptyCard, type RecordLogItem } from "ts-fsrs";
+import { db, runDatabaseTransaction } from "@/config/connection";
+import { getProgressValues } from "../reviewProgress";
+import { saveReview, type ReviewPolicy } from "../queries/saveReview";
 import { cardTable } from "../schemas/card/card";
 import { cardMeaningTable } from "../schemas/card/cardMeaning";
 import { deckTable } from "../schemas/card/deck";
 import { userCardMeaningTable } from "../schemas/user/userCardMeaning";
 import { userCardMeaningReviewTable } from "../schemas/user/userCardMeaningReview";
 import { userDeckTable } from "../schemas/user/userDeck";
-
-type UserCardMeaning = typeof userCardMeaningTable.$inferSelect;
 
 export async function getUserDecks() {
   return db
@@ -29,7 +29,7 @@ export async function getUserDeck(deckId: number) {
 }
 
 export async function addUserDeck(deckId: number) {
-  return db.transaction(async (tx) => {
+  return runDatabaseTransaction(async (tx) => {
     const [existing] = await tx
       .select()
       .from(userDeckTable)
@@ -77,7 +77,7 @@ export async function addUserCardMeaning(
   cardMeaningId: number,
   now = new Date(),
 ) {
-  return db.transaction(async (tx) => {
+  return runDatabaseTransaction(async (tx) => {
     const [existing] = await tx
       .select()
       .from(userCardMeaningTable)
@@ -99,51 +99,11 @@ export async function addUserCardMeaning(
 export async function saveUserCardMeaningReview(
   cardMeaningId: number,
   result: RecordLogItem,
+  policy?: ReviewPolicy,
 ) {
-  return db.transaction(async (tx) => {
-    const [existing] = await tx
-      .select()
-      .from(userCardMeaningTable)
-      .where(eq(userCardMeaningTable.cardMeaningId, cardMeaningId))
-      .limit(1);
-
-    const values = getProgressValues(cardMeaningId, result.card);
-    const [progress] = await tx
-      .insert(userCardMeaningTable)
-      .values({ id: existing?.id, ...values })
-      .onConflictDoUpdate({ target: userCardMeaningTable.id, set: values })
-      .returning();
-
-    const { log } = result;
-    await tx.insert(userCardMeaningReviewTable).values({
-      cardMeaningId,
-      userCardMeaningId: progress.id,
-      rating: log.rating,
-      state: log.state,
-      due: log.due,
-      stability: log.stability,
-      difficulty: log.difficulty,
-      scheduledDays: log.scheduled_days,
-      elapsedDays: log.elapsed_days,
-      lastElapsedDays: log.last_elapsed_days,
-      learningSteps: log.learning_steps,
-      review: log.review,
-    });
-
-    const [meaning] = await tx
-      .select({ deckId: cardTable.deckId })
-      .from(cardMeaningTable)
-      .innerJoin(cardTable, eq(cardTable.id, cardMeaningTable.cardId))
-      .where(eq(cardMeaningTable.id, cardMeaningId))
-      .limit(1);
-
-    await tx
-      .update(userDeckTable)
-      .set({ lastReviewedAt: log.review })
-      .where(eq(userDeckTable.deckId, meaning.deckId));
-
-    return progress;
-  });
+  return runDatabaseTransaction((tx) =>
+    saveReview(tx, cardMeaningId, result, policy),
+  );
 }
 
 export async function getUserCardMeaningReviews(cardMeaningId: number) {
@@ -155,35 +115,4 @@ export async function getUserCardMeaningReviews(cardMeaningId: number) {
       desc(userCardMeaningReviewTable.review),
       desc(userCardMeaningReviewTable.id),
     );
-}
-
-export function toFsrsCard(progress: UserCardMeaning): Card {
-  return {
-    due: progress.due,
-    stability: progress.stability,
-    difficulty: progress.difficulty,
-    elapsed_days: progress.elapsedDays,
-    scheduled_days: progress.scheduledDays,
-    learning_steps: progress.learningSteps,
-    reps: progress.reps,
-    lapses: progress.lapses,
-    state: progress.state,
-    last_review: progress.lastReview ?? undefined,
-  };
-}
-
-function getProgressValues(cardMeaningId: number, card: Card) {
-  return {
-    cardMeaningId,
-    due: card.due,
-    stability: card.stability,
-    difficulty: card.difficulty,
-    elapsedDays: card.elapsed_days,
-    scheduledDays: card.scheduled_days,
-    learningSteps: card.learning_steps,
-    reps: card.reps,
-    lapses: card.lapses,
-    state: card.state,
-    lastReview: card.last_review ?? null,
-  };
 }

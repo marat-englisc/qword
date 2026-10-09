@@ -5,6 +5,7 @@ import {
   sqliteTable,
   real,
   unique,
+  uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 import { cardMeaningTable } from "../card/cardMeaning";
 
@@ -41,7 +42,9 @@ export const userCardMeaningTable = sqliteTable(
   },
   (table) => [
     index("user_card_meanings_due_index").on(table.due),
-    index("user_card_meanings_card_meaning_index").on(table.cardMeaningId),
+    uniqueIndex("user_card_meanings_card_meaning_unique").on(
+      table.cardMeaningId,
+    ),
 
     unique("user_card_meaning_identity_unique").on(
       table.id,

@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { ScrollView, View } from "react-native";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import {
@@ -12,14 +12,18 @@ import {
 } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
 import type { Grade } from "ts-fsrs";
+import { useShallow } from "zustand/react/shallow";
 import WordCard from "@/components/WordCard";
+import { useForegroundEffect } from "@/hooks/useForegroundEffect";
 import { formatInterval, ratings } from "@/lib/scheduler";
 import { previewStudyCard } from "@/lib/study";
+import { StudyCardUnavailableError } from "@/lib/studyErrors";
 import { useAppStore } from "@/store";
 import { theme } from "@/theme";
 
 export default function StudyScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const params = useLocalSearchParams<{ id: string | string[] }>();
+  const id = typeof params.id === "string" ? params.id : "";
   const {
     currentCard,
     examples,
@@ -33,17 +37,40 @@ export default function StudyScreen() {
     refreshSession,
     reveal,
     answer,
-  } = useAppStore();
+    now: previewTime,
+  } = useAppStore(
+    useShallow((state) => ({
+      currentCard: state.currentCard,
+      examples: state.examples,
+      session: state.session,
+      sessionId: state.sessionId,
+      answered: state.answered,
+      revealed: state.revealed,
+      saving: state.saving,
+      decks: state.decks,
+      startSession: state.startSession,
+      refreshSession: state.refreshSession,
+      reveal: state.reveal,
+      answer: state.answer,
+      now: state.now,
+    })),
+  );
   const [error, setError] = useState("");
+  const [loadFailed, setLoadFailed] = useState(false);
   const [loading, setLoading] = useState(true);
+  const reloadingRef = useRef(false);
   const [now, setNow] = useState(() => Date.now());
   const deck = decks.find((item) => item.id === Number(id));
-  const validDeck = id === "all" || !!deck?.added;
+  const validId = id === "all" ||
+    (/^[1-9]\d*$/.test(id) && Number.isSafeInteger(Number(id)));
+  const validDeck = validId && (id === "all" || !!deck?.added);
+  const sessionMatches = sessionId === id;
 
   useFocusEffect(
     useCallback(() => {
       let active = true;
       setError("");
+      setLoadFailed(false);
       setLoading(true);
       if (!validDeck) {
         setLoading(false);
@@ -51,32 +78,67 @@ export default function StudyScreen() {
       }
       void startSession(id)
         .catch(() => {
-          if (active)
+          if (active) {
+            setLoadFailed(true);
             setError("Не удалось загрузить практику. Попробуйте ещё раз.");
+          }
         })
         .finally(() => {
-          if (active) setLoading(false);
+          if (active) {
+            setNow(Date.now());
+            setLoading(false);
+          }
         });
-
-      const timer = setInterval(() => {
-        const time = Date.now();
-        if (active) setNow(time);
-        const state = useAppStore.getState();
-        const wakeAt = Math.min(
-          state.session?.nextDue?.getTime() ?? Infinity,
-          state.session?.newResetAt.getTime() ?? Infinity,
-        );
-        if (!state.currentCard && !state.saving && time >= wakeAt) {
-          void refreshSession().catch(() => {
-            if (active) setError("Не удалось обновить очередь.");
-          });
-        }
-      }, 1000);
       return () => {
         active = false;
-        clearInterval(timer);
       };
-    }, [id, validDeck, startSession, refreshSession]),
+    }, [id, validDeck, startSession]),
+  );
+
+  useForegroundEffect(
+    useCallback(() => {
+      if (loading || saving || currentCard || !validDeck || !sessionMatches || !session)
+        return;
+      let active = true;
+      let timer: ReturnType<typeof setTimeout>;
+      const update = async () => {
+        const time = Date.now();
+        setNow(time);
+        const wakeAt = Math.min(
+          session.nextDue?.getTime() ?? Infinity,
+          session.newResetAt.getTime(),
+        );
+        if (time >= wakeAt && !reloadingRef.current) {
+          reloadingRef.current = true;
+          try {
+            await refreshSession();
+            if (active) {
+              setLoadFailed(false);
+              setError("");
+            }
+          } catch {
+            if (active) {
+              setLoadFailed(true);
+              setError("Не удалось обновить очередь. Попробуйте ещё раз.");
+            }
+          } finally {
+            reloadingRef.current = false;
+          }
+        }
+        if (active) {
+          const wait = wakeAt - Date.now();
+          timer = setTimeout(
+            () => void update(),
+            wait > 0 ? Math.min(30_000, Math.max(1000, wait)) : 30_000,
+          );
+        }
+      };
+      void update();
+      return () => {
+        active = false;
+        clearTimeout(timer);
+      };
+    }, [loading, saving, currentCard, validDeck, sessionMatches, session, refreshSession]),
   );
 
   function goBack() {
@@ -89,30 +151,43 @@ export default function StudyScreen() {
     try {
       setError("");
       await answer(rating);
-    } catch {
+    } catch (error) {
+      if (!useAppStore.getState().currentCard) setLoadFailed(true);
       setError(
-        "Не удалось сохранить ответ или загрузить следующее значение. Попробуйте ещё раз.",
+        error instanceof StudyCardUnavailableError
+          ? error.message
+          : "Не удалось сохранить ответ или загрузить следующее значение. Попробуйте ещё раз.",
       );
     }
   }
 
   async function reload() {
+    if (reloadingRef.current || !validDeck) return;
+    reloadingRef.current = true;
     setLoading(true);
     setError("");
     try {
       if (sessionId === id && session) await refreshSession();
       else await startSession(id);
+      setLoadFailed(false);
     } catch {
+      setLoadFailed(true);
       setError("Не удалось загрузить практику.");
     } finally {
+      reloadingRef.current = false;
+      setNow(Date.now());
       setLoading(false);
     }
   }
 
-  const preview = currentCard
-    ? previewStudyCard(currentCard, new Date(now))
-    : null;
-  const nextDue = session?.nextDue;
+  const preview = useMemo(
+    () => currentCard && revealed
+      ? previewStudyCard(currentCard, new Date(previewTime))
+      : null,
+    [currentCard, revealed, previewTime],
+  );
+  const nextDue = sessionMatches ? session?.nextDue : null;
+  const answerCount = sessionMatches ? answered : 0;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.background }}>
@@ -132,7 +207,7 @@ export default function StudyScreen() {
             titleStyle={{ fontSize: 18 }}
           />
           <Text variant="labelLarge" style={{ marginRight: 20 }}>
-            Ответов: {answered}
+            Ответов: {answerCount}
           </Text>
         </Appbar.Header>
 
@@ -210,10 +285,10 @@ export default function StudyScreen() {
                           labelStyle={{ marginHorizontal: 8, fontSize: 13 }}
                           disabled={saving}
                           onPress={() => void rate(rating.value)}
-                          accessibilityLabel={`${rating.label}, через ${formatInterval(preview[rating.value].card.due, now)}`}
+                          accessibilityLabel={`${rating.label}, через ${formatInterval(preview[rating.value].card.due, previewTime)}`}
                         >
                           {rating.label} ·{" "}
-                          {formatInterval(preview[rating.value].card.due, now)}
+                          {formatInterval(preview[rating.value].card.due, previewTime)}
                         </Button>
                       </View>
                     ))}
@@ -223,6 +298,7 @@ export default function StudyScreen() {
                 <Button
                   mode="contained"
                   onPress={reveal}
+                  disabled={saving}
                   contentStyle={{ minHeight: 52 }}
                 >
                   Показать ответ
@@ -240,7 +316,7 @@ export default function StudyScreen() {
           >
             <View className="items-center gap-5">
               <Avatar.Icon
-                icon={validDeck ? "check" : "cards-outline"}
+                icon={loadFailed ? "alert-circle-outline" : validDeck ? "check" : "cards-outline"}
                 size={80}
                 color={theme.colors.secondary}
                 style={{ backgroundColor: theme.colors.secondaryContainer }}
@@ -249,13 +325,15 @@ export default function StudyScreen() {
                 variant="headlineMedium"
                 style={{ fontWeight: "700", textAlign: "center" }}
               >
-                {!validDeck
-                  ? "Колода не добавлена"
-                  : !session
-                    ? "Не удалось загрузить практику"
-                    : answered
-                      ? "Хорошая работа!"
-                      : "Пока всё пройдено"}
+                {!validId || (id !== "all" && !deck)
+                  ? "Колода не найдена"
+                  : !validDeck
+                    ? "Колода не добавлена"
+                    : loadFailed || !sessionMatches || !session
+                      ? "Не удалось загрузить практику"
+                      : answerCount
+                        ? "Хорошая работа!"
+                        : "Пока всё пройдено"}
               </Text>
               <Text
                 variant="bodyLarge"
@@ -264,9 +342,15 @@ export default function StudyScreen() {
                   color: theme.colors.onSurfaceVariant,
                 }}
               >
-                {answered
-                  ? `Ответов за эту практику: ${answered}.`
-                  : "Сейчас нет доступных значений."}
+                {!validId || (id !== "all" && !deck)
+                  ? "Вернитесь к списку и выберите доступную колоду."
+                  : !validDeck
+                    ? "Добавьте колоду к изучению на экране колоды."
+                    : loadFailed || !sessionMatches || !session
+                      ? "Попробуйте загрузить доступные значения ещё раз."
+                      : answerCount
+                        ? `Ответов за эту практику: ${answerCount}.`
+                        : "Сейчас нет доступных значений."}
               </Text>
               {nextDue && validDeck && (
                 <Text
@@ -283,7 +367,7 @@ export default function StudyScreen() {
                   .
                 </Text>
               )}
-              {session?.newRemainingToday === 0 && (
+              {validDeck && sessionMatches && session?.newRemainingToday === 0 && (
                 <Text
                   variant="bodyMedium"
                   style={{
@@ -294,7 +378,7 @@ export default function StudyScreen() {
                   Дневной лимит новых значений достигнут. Он обновится в 04:00.
                 </Text>
               )}
-              {session?.newBlocked && (
+              {validDeck && sessionMatches && session?.newBlocked && (
                 <Text
                   variant="bodyMedium"
                   style={{

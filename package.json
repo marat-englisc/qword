@@ -4,8 +4,6 @@
   "main": "index.ts",
   "dependencies": {
     "@expo/vector-icons": "^15.1.1",
-    "@libsql/client": "^0.18.0",
-    "dotenv": "^18.0.6",
     "drizzle-orm": "^1.0.0-rc.4",
     "expo": "^57.0.27",
     "expo-asset": "~57.0.19",
@@ -31,8 +29,11 @@
     "zustand": "^5.0.15"
   },
   "devDependencies": {
+    "@libsql/client": "^0.18.0",
+    "@types/node": "^24",
     "@types/react": "~19.2.2",
     "babel-preset-expo": "~57.0.0",
+    "dotenv": "^18.0.6",
     "drizzle-kit": "^1.0.0-rc.4",
     "eslint": "^9.39.5",
     "eslint-config-expo": "~57.0.2",
@@ -46,9 +47,13 @@
     "ios": "expo start --ios",
     "web": "expo export --platform web && expo serve --port 8090",
     "lint": "expo lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts"
   },
   "private": true,
+  "engines": {
+    "node": ">=22.13.0"
+  },
   "overrides": {
     "tailwindcss": {
       "postcss-selector-parser": "7.1.6"

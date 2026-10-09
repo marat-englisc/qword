@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FlatList, ScrollView, View } from "react-native";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import {
@@ -24,14 +24,17 @@ import {
   getDeckMeanings,
 } from "@/db/repositories/cardRepository";
 import type { StudyCard } from "@/db/repositories/studyRepository";
+import { useForegroundEffect } from "@/hooks/useForegroundEffect";
 import { formatInterval } from "@/lib/scheduler";
 import { getStudyQueue } from "@/lib/study";
 import { useAppStore } from "@/store";
 import { theme } from "@/theme";
 
 export default function DeckScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
-  const deckId = Number(id);
+  const { id } = useLocalSearchParams<{ id: string | string[] }>();
+  const deckId =
+    typeof id === "string" && /^[1-9]\d*$/.test(id) ? Number(id) : NaN;
+  const validId = Number.isSafeInteger(deckId);
   const decks = useAppStore((state) => state.decks);
   const refresh = useAppStore((state) => state.refresh);
   const addDeck = useAppStore((state) => state.addDeck);
@@ -47,44 +50,60 @@ export default function DeckScreen() {
   >([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
+  const addingRef = useRef(false);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [retry, setRetry] = useState(0);
+  const [examplesLoading, setExamplesLoading] = useState(false);
+  const [examplesError, setExamplesError] = useState(false);
+  const [examplesRetry, setExamplesRetry] = useState(0);
   const [error, setError] = useState("");
   const deck = decks.find((item) => item.id === deckId);
 
-  useFocusEffect(
+  useForegroundEffect(
     useCallback(() => {
       let active = true;
+      let initial = true;
+      let timer: ReturnType<typeof setTimeout>;
+      setLoading(validId);
+      setLoadFailed(false);
+      setError("");
       const update = async () => {
-        if (!Number.isInteger(deckId) || deckId <= 0) {
-          if (active) setLoading(false);
-          return;
-        }
-        await refresh();
-        const [rows, queue] = await Promise.all([
-          getDeckMeanings(deckId),
-          getStudyQueue({ deckId }),
-        ]);
-        if (active) {
-          setMeanings(rows);
-          setStudy(queue);
-          setLoading(false);
+        if (!validId) return;
+        try {
+          await refresh();
+          const [rows, queue] = await Promise.all([
+            initial ? getDeckMeanings(deckId) : Promise.resolve(null),
+            getStudyQueue({ deckId }),
+          ]);
+          if (active) {
+            if (rows) setMeanings(rows);
+            setStudy(queue);
+            setLoadFailed(false);
+            setError("");
+            initial = false;
+          }
+        } catch {
+          if (active) {
+            if (initial) setLoadFailed(true);
+            setError("Не удалось загрузить колоду. Попробуйте ещё раз.");
+          }
+        } finally {
+          if (active) {
+            setLoading(false);
+            timer = setTimeout(() => void update(), 30_000);
+          }
         }
       };
-      void update().catch(() => {
-        if (active) {
-          setError("Не удалось загрузить колоду.");
-          setLoading(false);
-        }
-      });
-      const timer = setInterval(
-        () => void update().catch(console.error),
-        30_000,
-      );
+      void update();
       return () => {
         active = false;
-        clearInterval(timer);
+        clearTimeout(timer);
       };
-    }, [deckId, refresh]),
+    }, [deckId, validId, refresh]),
+    retry,
   );
+
+  useFocusEffect(useCallback(() => () => setSelected(null), []));
 
   useEffect(() => {
     let active = true;
@@ -94,13 +113,16 @@ export default function DeckScreen() {
           if (active) setExamples(rows);
         })
         .catch(() => {
-          if (active) setError("Не удалось загрузить примеры.");
+          if (active) setExamplesError(true);
+        })
+        .finally(() => {
+          if (active) setExamplesLoading(false);
         });
     }
     return () => {
       active = false;
     };
-  }, [selected]);
+  }, [selected, examplesRetry]);
 
   function goBack() {
     if (router.canGoBack()) router.back();
@@ -108,7 +130,8 @@ export default function DeckScreen() {
   }
 
   async function addToStudy() {
-    if (adding) return;
+    if (addingRef.current || !validId) return;
+    addingRef.current = true;
     setAdding(true);
     try {
       await addDeck(deckId);
@@ -116,15 +139,20 @@ export default function DeckScreen() {
     } catch {
       setError("Не удалось добавить колоду.");
     } finally {
+      addingRef.current = false;
       setAdding(false);
     }
   }
 
   const query = search.trim().toLowerCase();
-  const filtered = meanings.filter(({ word, meaning }) =>
-    `${word.title} ${meaning.hint ?? ""} ${meaning.meaningTranslation}`
-      .toLowerCase()
-      .includes(query),
+  const filtered = useMemo(
+    () =>
+      meanings.filter(({ word, meaning }) =>
+        `${word.title} ${meaning.hint ?? ""} ${meaning.meaning} ${meaning.meaningTranslation}`
+          .toLowerCase()
+          .includes(query),
+      ),
+    [meanings, query],
   );
   const available = study?.queue.length ?? 0;
 
@@ -135,7 +163,7 @@ export default function DeckScreen() {
           statusBarHeight={0}
           style={{ backgroundColor: theme.colors.background }}
         >
-          <Appbar.BackAction onPress={goBack} />
+          <Appbar.BackAction onPress={goBack} accessibilityLabel="К колодам" />
           <Appbar.Content
             title={deck?.name ?? "Колода"}
             titleStyle={{ fontSize: 18 }}
@@ -144,6 +172,18 @@ export default function DeckScreen() {
         {loading ? (
           <View className="flex-1 items-center justify-center">
             <ActivityIndicator />
+          </View>
+        ) : loadFailed ? (
+          <View className="flex-1 items-center justify-center gap-4 px-6">
+            <Text variant="titleLarge" style={{ textAlign: "center" }}>
+              Не удалось загрузить колоду
+            </Text>
+            <Button
+              mode="contained"
+              onPress={() => setRetry((value) => value + 1)}
+            >
+              Повторить
+            </Button>
           </View>
         ) : deck ? (
           <FlatList
@@ -207,8 +247,11 @@ export default function DeckScreen() {
                     variant="bodyMedium"
                     style={{ color: theme.colors.onSurfaceVariant }}
                   >
-                    Следующее повторение через{" "}
-                    {formatInterval(study.nextDue, now)}.
+                    Следующее повторение{" "}
+                    {study.nextDue.getTime() <= now
+                      ? "уже доступно"
+                      : `через ${formatInterval(study.nextDue, now)}`}
+                    .
                   </Text>
                 )}
                 {deck.added && study?.newBlocked && (
@@ -238,6 +281,7 @@ export default function DeckScreen() {
                   placeholder="Найти слово или значение"
                   value={search}
                   onChangeText={setSearch}
+                  accessibilityLabel="Найти слово или значение"
                   style={{ backgroundColor: theme.colors.surfaceVariant }}
                 />
               </View>
@@ -250,7 +294,9 @@ export default function DeckScreen() {
                   color: theme.colors.onSurfaceVariant,
                 }}
               >
-                Ничего не найдено.
+                {query
+                  ? "Ничего не найдено."
+                  : "В этой колоде пока нет значений."}
               </Text>
             }
             renderItem={({ item }) => {
@@ -260,8 +306,11 @@ export default function DeckScreen() {
                 <TouchableRipple
                   onPress={() => {
                     setExamples([]);
+                    setExamplesLoading(true);
+                    setExamplesError(false);
                     setSelected(item);
                   }}
+                  accessibilityRole="button"
                   accessibilityLabel={`Посмотреть значение ${item.word.title}: ${item.meaning.meaningTranslation}`}
                 >
                   <View className="flex-row items-center gap-3 py-4">
@@ -351,6 +400,23 @@ export default function DeckScreen() {
                   examples={examples}
                   revealed
                 />
+              )}
+              {examplesLoading && <ActivityIndicator style={{ margin: 20 }} />}
+              {examplesError && (
+                <View className="gap-2 p-4">
+                  <Text style={{ color: theme.colors.error }}>
+                    Не удалось загрузить примеры.
+                  </Text>
+                  <Button
+                    onPress={() => {
+                      setExamplesLoading(true);
+                      setExamplesError(false);
+                      setExamplesRetry((value) => value + 1);
+                    }}
+                  >
+                    Повторить
+                  </Button>
+                </View>
               )}
             </ScrollView>
           </Dialog.ScrollArea>

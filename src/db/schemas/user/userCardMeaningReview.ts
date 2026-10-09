@@ -50,5 +50,9 @@ export const userCardMeaningReviewTable = sqliteTable(
       table.userCardMeaningId,
       table.review,
     ),
+    index("user_card_meaning_reviews_meaning_index").on(
+      table.cardMeaningId,
+      table.review,
+    ),
   ],
 );
